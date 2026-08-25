@@ -62,6 +62,15 @@ class Settings:
     victim_model: str = "qwen2.5:3b-instruct"
     recon_model: str = "qwen2.5:3b-instruct"
     judge_model: str = "qwen2.5:3b-instruct"
+    # ── 역할별 backend (혼합 배치) ──────────────────────────
+    # 각 노드가 어느 백엔드를 쓸지 개별 지정. None 이면 profile 을 따른다.
+    # 예) victim=로컬 유지 + recon/judge 만 openai → 지시문 원문 최소 노출 + 판정 정확도↑
+    victim_backend: str | None = None   # "mock" | "local" | "openai"
+    recon_backend: str | None = None
+    judge_backend: str | None = None
+    # OpenAI(상용) 접속 — 로컬(llm_*)과 별도. 그래서 victim=로컬, recon/judge=openai 를 섞을 수 있다
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_api_key: str = ""
     temperature: float = 0.0   # 진단 실행은 temperature=0 고정(재현성 규칙 1)
     seed: int = 42
     max_calls: int = 200       # 진단 1회 호출 상한(유료 API 비용 방어)
@@ -95,6 +104,11 @@ class Settings:
             judge_model=env.get("JUDGE_MODEL", cls.judge_model),
             temperature=float(env.get("JOKER_TEMPERATURE", cls.temperature)),
             seed=int(env.get("JOKER_SEED", cls.seed)),
+            victim_backend=env.get("VICTIM_BACKEND") or None,
+            recon_backend=env.get("RECON_BACKEND") or None,
+            judge_backend=env.get("JUDGE_BACKEND") or None,
+            openai_base_url=env.get("OPENAI_BASE_URL", cls.openai_base_url),
+            openai_api_key=env.get("OPENAI_API_KEY", cls.openai_api_key),
             max_calls=int(env.get("JOKER_MAX_CALLS", cls.max_calls)),
             request_timeout=float(env.get("JOKER_TIMEOUT", cls.request_timeout)),
             max_tokens=int(env.get("JOKER_MAX_TOKENS", cls.max_tokens)),
@@ -106,6 +120,11 @@ class Settings:
     def with_(self, **overrides) -> "Settings":
         """일부 값만 바꾼 '새' 인스턴스를 반환. 원본은 불변."""
         return replace(self, **overrides)
+
+    def backend_for(self, role: str) -> str:
+        """역할(victim/recon/judge)이 쓸 백엔드. 개별 지정 없으면 profile 을 따른다."""
+        per_role = {"victim": self.victim_backend, "recon": self.recon_backend, "judge": self.judge_backend}
+        return (per_role.get(role) or self.profile.value)
 
     def __repr__(self) -> str:  # 키를 절대 노출하지 않는다
         return (

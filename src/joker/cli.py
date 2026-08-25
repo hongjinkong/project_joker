@@ -26,12 +26,14 @@ def _cmd_doctor(_args) -> int:
 
     # 실제로 엔진이 쓸 '유효' 설정을 보여준다(.env 반영 후). raw 환경변수 아님.
     s = Settings.from_env()
-    print(f"[INFO] profile = {s.profile.value}   (local/openai 여야 실제 모델 호출)")
-    print(f"[INFO] base_url = {s.llm_base_url}")
-    print(f"[INFO] api_key = {'설정됨' if s.llm_api_key else '(없음 — Ollama 는 없어도 됨)'}")
-    print(f"[INFO] victim_model = {s.victim_model}")
-    if s.profile.value == "mock":
-        print("[WARN] 지금 mock 이라 실제 모델을 호출하지 않습니다. 실측하려면 .env 에 JOKER_PROFILE=local")
+    print(f"[INFO] profile(기본) = {s.profile.value}")
+    print(f"[INFO] 역할별 backend: victim={s.backend_for('victim')} · recon={s.backend_for('recon')} · judge={s.backend_for('judge')}")
+    print(f"[INFO] 로컬 base_url = {s.llm_base_url}")
+    if "openai" in (s.backend_for("victim"), s.backend_for("recon"), s.backend_for("judge")):
+        print(f"[INFO] openai base_url = {s.openai_base_url} · key = {'설정됨' if s.openai_api_key else '(없음⚠)'}")
+    print(f"[INFO] 모델: victim={s.victim_model} · recon={s.recon_model} · judge={s.judge_model}")
+    if all(b == "mock" for b in (s.backend_for('victim'), s.backend_for('recon'), s.backend_for('judge'))):
+        print("[WARN] 전부 mock 이라 실제 모델을 호출하지 않습니다. 실측하려면 JOKER_PROFILE=local")
     return 0 if ok else 1
 
 
