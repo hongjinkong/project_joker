@@ -1,0 +1,22 @@
+# 키 유출 1차 방어선 — 팀원 5명 전원 이 파일이 있어야 한다
+.env
+*.db
+*.db-journal
+*.sqlite
+
+# 실행 산출물
+runs/
+docs/bench/*.local.*
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# OS
+.DS_Store

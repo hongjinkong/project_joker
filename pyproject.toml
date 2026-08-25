@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "joker"
+version = "0.1.0"
+description = "「뚫어보기」 — 한국어 특화 프롬프트 인젝션 진단·처방·재진단 엔진"
+readme = "README.md"
+requires-python = ">=3.11"
+# langgraph 는 '주 의존성'이다(선택 extra 아님). 챌린지 포인트가 LangChain 계열이기도 하고,
+# graph.py 가 없으면 함정③(trap03) 재발 방지 테스트가 조용히 skip 되어 무의미해지기 때문이다.
+dependencies = [
+    "pyyaml>=6.0",
+    "langgraph>=0.2",
+]
+
+[project.optional-dependencies]
+# 화면(FastAPI/Streamlit)은 다음 주 구현. 계약 문서(contracts/)는 이번 주 확정.
+web = ["fastapi>=0.110", "uvicorn>=0.29", "streamlit>=1.30", "httpx>=0.27"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+joker = "joker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# --strict-markers: 오타난 마커를 에러로 만든다.
+# trap03 이 langgraph 미설치로 조용히 skip 되지 않게, skip 은 이 프로젝트에서 '실패'로 간주한다(§5).
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+markers = [
+    "trap: 이전 구현에서 실제로 깨진 함정 6개의 재발 방지 테스트 (SPEC 1장)",
+    "boundary: 모듈 경계·계약 테스트",
+]

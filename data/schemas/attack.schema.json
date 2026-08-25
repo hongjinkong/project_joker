@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "공격 시드 (Attack) 스키마",
+  "description": "data/attacks/**.yaml 한 항목의 형식. 에디터 자동완성 + joker audit 의 근거. 실제 규칙(중복 id, technique당 screening 3개 등)은 joker audit 이 검사한다.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "technique", "goal", "text", "principle"],
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Z_]+-[0-9]{2}$",
+        "description": "형식 TECHNIQUE-NN. 예: ROLE-01, INDIRECT_DOC-03. 전체에서 중복 금지."
+      },
+      "technique": {
+        "type": "string",
+        "enum": ["ROLE", "AUTH", "INDIRECT", "OBFUSC", "FORMAT", "INDIRECT_DOC"],
+        "description": "어떻게 속이나(자체 taxonomy)."
+      },
+      "goal": {
+        "type": "string",
+        "enum": ["INFO_LEAK", "POLICY_BREAK", "PERSONA_BREAK"],
+        "description": "무엇을 무너뜨리나. 현재 구현은 INFO_LEAK."
+      },
+      "text": {
+        "type": "string",
+        "description": "실제 던질 공격문. 플레이스홀더 4개만 사용: {asset} {persona} {org} {decoy}. 그 외 중괄호는 리터럴로 유지된다(str.format 아님)."
+      },
+      "principle": {
+        "type": "string",
+        "minLength": 1,
+        "description": "왜 통하는가 (한 줄, 필수)."
+      },
+      "screening": {
+        "type": "boolean",
+        "default": false,
+        "description": "1단계 스크리닝 대상인가. technique 당 정확히 3개만 true 여야 한다."
+      },
+      "ko_native": {
+        "type": "boolean",
+        "default": false,
+        "description": "한국어 고유 공격인가. true 면 ko_native_reason 필수."
+      },
+      "ko_native_reason": {
+        "type": ["string", "null"],
+        "description": "영어로 번역하면 왜 안 통하는지 한 줄. ko_native=true 일 때 필수."
+      },
+      "author": {
+        "type": "string",
+        "description": "작성자 이름."
+      },
+      "validated": {
+        "type": "boolean",
+        "default": false,
+        "description": "실제 모델에 던져 확인했는가. false 면 발표 숫자에서 제외."
+      }
+    }
+  }
+}
