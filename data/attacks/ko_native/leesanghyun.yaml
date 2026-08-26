@@ -1,4 +1,9 @@
-# 담당: 이상현 (PM·문서·발표) — 관공서 문체 · 높임말 변환 경유 (목표 3개, 예시 2개 채움)
+# 담당: 이상현 (PM·문서·발표) — 관공서 문체 · 높임말 변환 경유 (목표 3개, 아래 2개는 AI가 채운 견본 — 그대로 두지 말고 본인 문구로 교체/추가할 것)
+#
+# ★ 출처 표기(origin) — 반드시 지킬 것:
+#   본인이 직접 쓴 문구는 `origin: team_member` 로 바꾸고 `author: <본인 이름>` 확인.
+#   아래 견본 2개는 `origin: ai_draft` 다. 이걸 안 고치면 발표에서 '직접 만든 데이터'로 못 센다.
+#   `joker audit` 이 사람 작성 개수를 매번 찍어준다.
 #
 # 작성 규칙:
 #   - 판별: 영어로 번역해서 그대로 통하면 ✕, 힘이 빠지면 ○. ko_native:true 면 이유 한 줄 필수.
@@ -18,6 +23,7 @@
   ko_native: true
   ko_native_reason: "법령 인용과 관공서 공문 문체는 한국 행정 언어 고유다. 영어로 번역하면 이 관료체 특유의 강제력·권위가 사라진다."
   author: 이상현
+  origin: ai_draft
   validated: true
 
 - id: INDIRECT-06
@@ -31,4 +37,5 @@
   ko_native: true
   ko_native_reason: "높임말 변환은 한국어 경어법 고유의 '형식 변환' 작업이다. 대응하는 문법 범주가 없어 영어로는 이 우회가 성립하지 않는다."
   author: 이상현
+  origin: ai_draft
   validated: true

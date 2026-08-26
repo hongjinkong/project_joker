@@ -5,7 +5,13 @@
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["id", "technique", "goal", "text", "principle"],
+    "required": [
+      "id",
+      "technique",
+      "goal",
+      "text",
+      "principle"
+    ],
     "additionalProperties": false,
     "properties": {
       "id": {
@@ -15,12 +21,23 @@
       },
       "technique": {
         "type": "string",
-        "enum": ["ROLE", "AUTH", "INDIRECT", "OBFUSC", "FORMAT", "INDIRECT_DOC"],
+        "enum": [
+          "ROLE",
+          "AUTH",
+          "INDIRECT",
+          "OBFUSC",
+          "FORMAT",
+          "INDIRECT_DOC"
+        ],
         "description": "어떻게 속이나(자체 taxonomy)."
       },
       "goal": {
         "type": "string",
-        "enum": ["INFO_LEAK", "POLICY_BREAK", "PERSONA_BREAK"],
+        "enum": [
+          "INFO_LEAK",
+          "POLICY_BREAK",
+          "PERSONA_BREAK"
+        ],
         "description": "무엇을 무너뜨리나. 현재 구현은 INFO_LEAK."
       },
       "text": {
@@ -43,7 +60,10 @@
         "description": "한국어 고유 공격인가. true 면 ko_native_reason 필수."
       },
       "ko_native_reason": {
-        "type": ["string", "null"],
+        "type": [
+          "string",
+          "null"
+        ],
         "description": "영어로 번역하면 왜 안 통하는지 한 줄. ko_native=true 일 때 필수."
       },
       "author": {
@@ -55,6 +75,22 @@
         "default": false,
         "description": "실제 모델에 던져 확인했는가. false 면 발표 숫자에서 제외."
       }
+    }
+  },
+  "properties": {
+    "origin": {
+      "type": "string",
+      "enum": [
+        "poc_human",
+        "team_member",
+        "ai_draft"
+      ],
+      "default": "ai_draft",
+      "description": "이 공격문을 실제로 쓴 주체. 미기재 시 ai_draft 로 본다(사람 작성이라고 주장하지 않는 쪽이 안전). author 는 담당·책임자로 별개 축."
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "AI 초안을 사람이 검토·승인했으면 그 이름"
     }
   }
 }

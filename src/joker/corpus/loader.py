@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 from joker.corpus.audit import AuditError, audit
-from joker.models import Attack, DefensePattern, Goal, Technique
+from joker.models import Attack, DefensePattern, Goal, Origin, Technique
 
 
 def _to_attack(d: dict, source: str) -> Attack:
@@ -26,6 +26,9 @@ def _to_attack(d: dict, source: str) -> Attack:
             ko_native=bool(d.get("ko_native", False)),
             ko_native_reason=(d.get("ko_native_reason") or None),
             author=str(d.get("author", "")),
+            # origin 미기재 = AI 초안으로 본다(사람 작성이라고 주장하지 않는 쪽이 안전)
+            origin=Origin(d.get("origin", Origin.AI_DRAFT.value)),
+            reviewed_by=str(d.get("reviewed_by", "")),
             validated=bool(d.get("validated", False)),
         )
     except KeyError as e:

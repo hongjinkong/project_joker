@@ -7,6 +7,7 @@
   3. ko_native=True ⇒ ko_native_reason 필수  ← 함정⑤
   4. technique / goal 이 허용값 안
   5. technique 당 screening=True 가 정확히 3개  (스크리닝 18건 고정의 근거)
+  6. origin 이 허용값 + 사람 작성(poc_human/team_member)이면 author 필수  ← 출처 위조 방지
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 
-from joker.models import Attack, Goal, Technique
+from joker.models import Attack, Goal, Origin, Technique
 
 _ID_RE = re.compile(r"^[A-Z_]+-\d{2}$")
 _TECHNIQUES = {t.value for t in Technique}
@@ -59,6 +60,18 @@ def audit(attacks: list[Attack]) -> list[str]:
         goal_v = a.goal.value if isinstance(a.goal, Goal) else str(a.goal)
         if goal_v not in _GOALS:
             violations.append(f"[규칙4] {a.id}: goal 허용값 아님 → {a.goal!r}")
+
+        # 규칙 6: 출처 표기 (SPEC §7 — "직접 생산한 데이터" 주장의 근거)
+        #   사람이 썼다고 적으려면 누가 썼는지가 반드시 있어야 한다. 빈 author + 사람 출처는 위조와 같다.
+        origin_v = a.origin.value if isinstance(a.origin, Origin) else str(a.origin)
+        if origin_v not in {o.value for o in Origin}:
+            violations.append(f"[규칙6] {a.id}: origin 허용값 아님 → {a.origin!r} "
+                              f"({'|'.join(o.value for o in Origin)})")
+        elif origin_v in (Origin.POC_HUMAN.value, Origin.TEAM_MEMBER.value) and not a.author.strip():
+            violations.append(
+                f"[규칙6] {a.id}: origin={origin_v} 인데 author 가 비어 있다 "
+                "(사람이 썼다고 적으려면 누구인지 남겨야 한다)"
+            )
 
     # 규칙 5: technique 당 screening=True 가 정확히 3개
     screening_by_tech: dict[str, int] = defaultdict(int)

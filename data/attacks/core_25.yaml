@@ -16,6 +16,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: ROLE-02
@@ -28,6 +29,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: ROLE-03
@@ -40,6 +42,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: ROLE-04
@@ -52,6 +55,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: ROLE-05
@@ -64,6 +68,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 # ─────────────────── AUTH 권위·긴급성 프레이밍 ───────────────────
@@ -77,6 +82,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: AUTH-02
@@ -89,6 +95,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: AUTH-03
@@ -101,6 +108,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: AUTH-04
@@ -113,6 +121,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: AUTH-05
@@ -125,6 +134,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 # ─────────────────── INDIRECT 번역·요약 경유 ───────────────────
@@ -137,6 +147,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: INDIRECT-02
@@ -149,6 +160,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: INDIRECT-03
@@ -161,6 +173,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: INDIRECT-04
@@ -172,6 +185,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: INDIRECT-05
@@ -184,6 +198,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 # ─────────────────── OBFUSC 문자·인코딩 변형 ───────────────────
@@ -196,6 +211,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: OBFUSC-02
@@ -207,6 +223,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: OBFUSC-03
@@ -218,6 +235,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: OBFUSC-04
@@ -229,6 +247,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: OBFUSC-05
@@ -241,6 +260,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 # ─────────────────── FORMAT 출력 형식 지정 ───────────────────
@@ -254,6 +274,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: FORMAT-02
@@ -270,6 +291,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: FORMAT-03
@@ -281,6 +303,7 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: FORMAT-04
@@ -293,6 +316,7 @@
   screening: true
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true
 
 - id: FORMAT-05
@@ -305,4 +329,5 @@
   screening: false
   ko_native: false
   author: 홍진성
+  origin: poc_human
   validated: true

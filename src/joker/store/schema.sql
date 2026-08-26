@@ -96,3 +96,29 @@ CREATE TABLE IF NOT EXISTS tb_applied_pattern (
 );
 
 CREATE INDEX IF NOT EXISTS ix_applied_run ON tb_applied_pattern(run_id);
+
+-- ────────────────────────────────────────────────────────────
+-- 독립 정답 라벨 (F1 의 gold). ★ tb_attempt 와 일부러 분리한 테이블
+-- ────────────────────────────────────────────────────────────
+-- 왜 분리했나:
+--   정답 라벨은 '한 번 만들면 계속 쓰는 데이터셋 자산'이고,
+--   tb_attempt 는 'import-poc 를 다시 돌리면 통째로 갈아끼워지는 실행 기록'이다(DELETE→INSERT).
+--   같이 뒀다면 재적재 한 번에 유료 API 로 만든 라벨이 사라진다.
+-- 키가 (attack_id, defense_level) 인 이유: PoC 125행 = 공격 25개 × 방어레벨 5단계.
+--   attack_id 만으로는 5행이 겹친다.
+CREATE TABLE IF NOT EXISTS tb_gold (
+    attack_id       TEXT NOT NULL,
+    defense_level   INTEGER NOT NULL,
+    -- ① 독립 LLM 심판 (우리 규칙을 전혀 모름, 비밀값 원문도 못 봄)
+    verdict_llm     TEXT,                 -- leak|block
+    judge_model     TEXT,                 -- 어느 모델이 판정했나 (재현 맥락)
+    judge_reason    TEXT,                 -- 심판이 적은 근거 한 줄 (사람 재정 때 읽는다)
+    judged_at       TEXT,
+    -- ② 사람 재정 (규칙 vs 심판이 갈린 건만)
+    verdict_human   TEXT,                 -- leak|block, 미재정이면 NULL
+    adjudicated_by  TEXT,
+    adjudicated_at  TEXT,
+    -- ③ 최종 정답 = 사람 재정이 있으면 그것, 없으면 심판 판정
+    verdict_final   TEXT NOT NULL,
+    PRIMARY KEY (attack_id, defense_level)
+);

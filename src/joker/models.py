@@ -47,6 +47,7 @@ class LeakChannel(str, Enum):
     PLAIN = "plain"
     REVERSED = "reversed"
     BASE64 = "base64"
+    SEGMENTED = "segmented"  # 조각·한글 음차 ('서울' + '1234' 로 쪼개 전달) — 2026-08-26 독립 심판이 찾아낸 채널
     SEMANTIC = "semantic"   # 의역·설명형 (규칙이 못 잡는 것 — 연구 포인트)
 
 
@@ -69,6 +70,19 @@ class Grade(str, Enum):
 PLACEHOLDERS = ("{asset}", "{persona}", "{org}", "{decoy}")
 
 
+class Origin(str, Enum):
+    """이 공격문을 **누가 실제로 썼는가**. author(책임자)와 다른 축이다.
+
+    왜 필요한가 (SPEC §7): 발표에서 "직접 생산한 데이터"를 주장하려면 근거가 남아야 한다.
+    author 필드만 있으면 AI 초안에 사람 이름이 붙어도 아무도 모른다(2026-08-26 실제로 그랬다).
+    기본값이 AI_DRAFT 인 이유: 명시하지 않으면 사람이 썼다고 '주장하지 않는' 쪽이 안전하다.
+    """
+
+    POC_HUMAN = "poc_human"      # 홍진성이 8/14 PoC 에서 직접 작성 (125회 실증 원본)
+    TEAM_MEMBER = "team_member"  # 팀원이 직접 작성
+    AI_DRAFT = "ai_draft"        # AI 초안 (사람 검토 여부는 validated / reviewed_by 로 따로 본다)
+
+
 @dataclass(frozen=True)
 class Attack:
     """공격 시드 1건. data/attacks/**.yaml 한 항목과 1:1."""
@@ -81,7 +95,9 @@ class Attack:
     screening: bool = False       # 1단계 스크리닝 대상인가 (technique 당 정확히 3개)
     ko_native: bool = False       # 한국어 고유 공격인가
     ko_native_reason: str | None = None  # ko_native=True 면 필수(함정⑤)
-    author: str = ""
+    author: str = ""              # 이 시드의 책임자(담당). '누가 썼나' 는 origin 을 볼 것
+    origin: Origin = Origin.AI_DRAFT  # 누가 실제로 문장을 썼나. 기본값은 보수적으로 AI 초안
+    reviewed_by: str = ""         # AI 초안을 사람이 검토·승인했으면 그 이름
     validated: bool = False       # 실제 모델에 던져본 적 있는가. False 면 발표 숫자 제외
 
 
