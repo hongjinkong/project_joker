@@ -48,6 +48,7 @@ def _build_one(role: str, model: str, settings: Settings) -> LLMProvider:
     inner = OpenAICompatProvider(
         base_url=base_url, api_key=api_key, model=model,
         timeout=settings.request_timeout, max_tokens=settings.max_tokens,
+        reasoning_effort=settings.reasoning_effort,
     )
     return BudgetProvider(inner, max_calls=settings.max_calls)
 

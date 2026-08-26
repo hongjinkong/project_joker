@@ -2,6 +2,13 @@
 
 Ollama 가 OpenAI 호환 엔드포인트(/v1/chat/completions)를 주므로 같은 코드로 둘 다 붙는다.
 의존성을 늘리지 않으려고 urllib(표준 라이브러리)만 쓴다.
+
+★ gpt-5 계열 호환: gpt-5-mini 등 신형 모델은 옛 파라미터를 거부한다.
+  - `max_tokens` ✕ → `max_completion_tokens` ○
+  - `temperature=0` ✕ (기본값 1만 허용) → 아예 안 보낸다
+  - `seed` 도 무시/거부 가능 → 안 보낸다
+  - 대신 `reasoning_effort` 로 추론 토큰(=비용)을 눌러 준다.
+  로컬 qwen(Ollama)은 옛 파라미터를 그대로 쓰므로 모델명으로 분기한다.
 """
 
 from __future__ import annotations
@@ -13,6 +20,15 @@ import urllib.request
 
 from joker.providers.base import CallResult, Usage
 
+# gpt-5 계열·o-시리즈: 신형 파라미터 규격을 쓰는 모델 접두사
+_RESTRICTED_PREFIXES = ("gpt-5", "gpt5", "o1", "o3", "o4")
+
+
+def _is_restricted(model: str) -> bool:
+    """신형(gpt-5/o-시리즈) 파라미터 규격을 써야 하는 모델인가."""
+    m = model.lower().split("/")[-1]  # "openai/gpt-5-mini" → "gpt-5-mini"
+    return any(m.startswith(p) for p in _RESTRICTED_PREFIXES)
+
 
 class ProviderError(Exception):
     pass
@@ -20,26 +36,41 @@ class ProviderError(Exception):
 
 class OpenAICompatProvider:
     def __init__(self, *, base_url: str, api_key: str, model: str,
-                 timeout: float = 120.0, max_tokens: int = 512) -> None:
+                 timeout: float = 120.0, max_tokens: int = 512,
+                 reasoning_effort: str = "low") -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
         self.max_tokens = max_tokens
+        self.reasoning_effort = reasoning_effort
+        self.restricted = _is_restricted(model)
 
-    def complete(self, *, system: str, user: str, temperature: float, seed: int) -> CallResult:
-        url = f"{self.base_url}/chat/completions"
-        body = {
+    def _build_body(self, *, system: str, user: str, temperature: float, seed: int) -> dict:
+        """요청 본문을 모델 규격에 맞게 조립한다(네트워크 없음 → 단위 테스트 대상)."""
+        body: dict = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": temperature,
-            "seed": seed,
-            "max_tokens": self.max_tokens,  # 응답 길이 상한 → 느린 생성·폭주 방지
             "stream": False,
         }
+        if self.restricted:
+            # gpt-5 계열: temperature/seed 미전송, max_completion_tokens 사용.
+            # 추론 토큰이 이 한도에 포함되므로 여유를 둬 응답이 잘려-빈문자열 되는 걸 막는다.
+            body["max_completion_tokens"] = max(self.max_tokens, 2048)
+            body["reasoning_effort"] = self.reasoning_effort
+        else:
+            # 로컬 qwen 등 고전 규격
+            body["temperature"] = temperature
+            body["seed"] = seed
+            body["max_tokens"] = self.max_tokens
+        return body
+
+    def complete(self, *, system: str, user: str, temperature: float, seed: int) -> CallResult:
+        url = f"{self.base_url}/chat/completions"
+        body = self._build_body(system=system, user=user, temperature=temperature, seed=seed)
         data = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(url, data=data, method="POST")
         req.add_header("Content-Type", "application/json")
@@ -55,7 +86,9 @@ class OpenAICompatProvider:
             raise ProviderError(f"LLM 호출 실패({self.base_url}): {e}") from e
         latency_ms = int((time.monotonic() - start) * 1000)
 
-        text = payload["choices"][0]["message"]["content"]
+        # 신형 모델이 추론에 토큰을 다 쓰면 content 가 None 일 수 있다 → 빈 문자열로 방어
+        msg = payload["choices"][0]["message"]
+        text = msg.get("content") or ""
         usage_raw = payload.get("usage", {})
         usage = Usage(
             prompt_tokens=usage_raw.get("prompt_tokens", 0),

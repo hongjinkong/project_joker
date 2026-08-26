@@ -76,6 +76,7 @@ class Settings:
     max_calls: int = 200       # 진단 1회 호출 상한(유료 API 비용 방어)
     request_timeout: float = 120.0  # LLM 호출 1건 타임아웃(초). 8GB 맥북 로컬은 넉넉히
     max_tokens: int = 512      # 응답 길이 상한(폭주·느린 생성 방지)
+    reasoning_effort: str = "low"  # gpt-5 계열 추론 강도(minimal|low|medium|high). 낮을수록 저비용·빠름
     db_path: str = "joker.db"
     env_profile: str = "unknown"  # 실행 환경 태그. 결과 행마다 저장돼 재현 맥락이 된다
 
@@ -112,6 +113,7 @@ class Settings:
             max_calls=int(env.get("JOKER_MAX_CALLS", cls.max_calls)),
             request_timeout=float(env.get("JOKER_TIMEOUT", cls.request_timeout)),
             max_tokens=int(env.get("JOKER_MAX_TOKENS", cls.max_tokens)),
+            reasoning_effort=env.get("JOKER_REASONING_EFFORT", cls.reasoning_effort),
             db_path=env.get("JOKER_DB_PATH", cls.db_path),
             env_profile=env.get("JOKER_ENV_PROFILE", cls.env_profile),
         )
