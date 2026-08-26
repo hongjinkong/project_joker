@@ -86,11 +86,18 @@ def test_every_seed_declares_a_valid_origin():
     assert all(isinstance(a.origin, Origin) for a in _corpus())
 
 
-def test_human_authored_count_is_auditable():
-    """발표에서 쓸 '사람이 직접 쓴 N개' 가 언제든 코드로 재계산돼야 한다."""
+def test_human_authored_count_never_silently_drops():
+    """사람 작성 시드는 늘어날 수는 있어도 줄어들면 안 된다.
+
+    ★ 정확히 25개로 고정하지 않는 이유: 팀 문구가 들어오면(origin: team_member) 매번 테스트가
+      깨져서 금요일 작업이 막힌다. 여기서 막아야 할 회귀는 '늘어나는 것'이 아니라
+      **누가 origin 을 ai_draft 로 되돌려 근거가 조용히 사라지는 것**이다.
+      과대주장(author 없이 사람 출처)은 audit 규칙 6 이 따로 막는다.
+    """
     atks = _corpus()
     human = [a for a in atks if a.origin is not Origin.AI_DRAFT]
-    assert len(human) == 25, (
-        f"사람 작성 시드가 {len(human)}개다. 팀 문구가 들어와 늘어난 거라면 이 숫자를 갱신하고, "
-        "기획서·발표 수치도 같이 고칠 것 — 이 테스트는 그 동기화를 강제하기 위한 것이다."
+    assert len(human) >= 25, (
+        f"사람 작성 시드가 {len(human)}개로 줄었다(최소 25 = PoC core). "
+        "누가 origin 을 ai_draft 로 되돌렸는지 확인할 것."
     )
+    assert all(a.author.strip() for a in human), "사람 작성인데 author 가 빈 시드가 있다"

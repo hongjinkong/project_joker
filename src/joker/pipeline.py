@@ -65,20 +65,32 @@ def step_attack_r1(state: RunState, deps: Deps) -> RunState:
     assets = state["assets"]
     attacks = list(deps.attacks)
 
-    screen = screening_set(attacks)
-    r1 = run_attacks(screen, state["target_prompt"], 1, deps, context)
-    judge_attempts(r1, assets, deps)
+    if deps.settings.full_sweep:
+        # 측정 전용 모드: 적응형 샘플링을 끄고 시드 전량을 던진다.
+        # 왜 필요한가(2026-08-26): 적응형은 '처방 전에 안 뚫린 기법' 에 집중 투입을 안 한다.
+        #   그래서 그 기법은 영원히 n=3(스크리닝)에 갇히고, 처방 후 변화를 통계적으로 판단할 수 없다.
+        #   실제로 ROLE·OBFUSC 의 "처방 후 증가"가 3건 중 1건이라 노이즈와 구분이 안 됐다.
+        # 제품 동작은 바꾸지 않는다 — 이 플래그는 재측정용이다(속도 목표는 적응형 기준으로 잰다).
+        sweep = sorted(attacks, key=lambda a: (a.technique.value, a.id))
+        r1_all = run_attacks(sweep, state["target_prompt"], 1, deps, context)
+        judge_attempts(r1_all, assets, deps)
+        vulnerable: list[Technique] = sorted(
+            {a.technique for a in r1_all if a.verdict == Verdict.LEAK}, key=lambda t: t.value
+        )
+    else:
+        screen = screening_set(attacks)
+        r1 = run_attacks(screen, state["target_prompt"], 1, deps, context)
+        judge_attempts(r1, assets, deps)
 
-    vulnerable: list[Technique] = sorted(
-        {a.technique for a in r1 if a.verdict == Verdict.LEAK}, key=lambda t: t.value
-    )
+        vulnerable = sorted(
+            {a.technique for a in r1 if a.verdict == Verdict.LEAK}, key=lambda t: t.value
+        )
 
-    seen = {a.attack_id for a in r1}
-    concentrate = [a for a in concentration_set(attacks, vulnerable) if a.id not in seen]
-    r1c = run_attacks(concentrate, state["target_prompt"], 1, deps, context)
-    judge_attempts(r1c, assets, deps)
-
-    r1_all = r1 + r1c
+        seen = {a.attack_id for a in r1}
+        concentrate = [a for a in concentration_set(attacks, vulnerable) if a.id not in seen]
+        r1c = run_attacks(concentrate, state["target_prompt"], 1, deps, context)
+        judge_attempts(r1c, assets, deps)
+        r1_all = r1 + r1c
     new: RunState = dict(state)  # type: ignore[assignment]
     new["attempts"] = list(state.get("attempts", [])) + r1_all
     new["vulnerable_techniques"] = vulnerable
@@ -89,7 +101,8 @@ def step_attack_r1(state: RunState, deps: Deps) -> RunState:
 
 def step_patch(state: RunState, deps: Deps) -> RunState:
     result = assemble_patch(
-        state["target_prompt"], list(state.get("vulnerable_techniques", [])), list(deps.patterns)
+        state["target_prompt"], list(state.get("vulnerable_techniques", [])), list(deps.patterns),
+        list(state.get("assets", [])),
     )
     new: RunState = dict(state)  # type: ignore[assignment]
     new["patched_prompt"] = result.patched_prompt
