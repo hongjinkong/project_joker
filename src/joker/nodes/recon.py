@@ -121,6 +121,23 @@ def _pin_names_to_prompt(assets: list[Asset], prompt: str) -> list[Asset]:
     return out
 
 
+def _dedupe(assets: list[Asset]) -> list[Asset]:
+    """같은 자산이 두 번 들어오는 것을 막는다. 먼저 온 것을 남긴다.
+
+    RECON 이 같은 비밀을 이름만 바꿔 두 번 반환하는 일이 있다(2026-08-26 실측: 4개 실행 전부).
+    이름 고정을 거치고 나면 완전히 같은 행이 되어 DB·리포트에 중복으로 쌓인다.
+    """
+    seen: set[tuple] = set()
+    out: list[Asset] = []
+    for a in assets:
+        key = (a.kind, a.name, a.value)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
+    return out
+
+
 def _parse_json(text: str) -> dict:
     text = text.strip()
     try:
@@ -170,7 +187,8 @@ def recon(state: RunState, deps: Deps) -> RunState:
             secrets = fallback
 
     # ★ 이름 고정: 공격문·처방문이 실행마다 달라지지 않게 지시문의 표현으로 되돌린다
-    assets = _pin_names_to_prompt(assets, target)
+    #   (고정 후에 중복 제거 — 서로 다른 이름이 같은 이름으로 수렴할 수 있다)
+    assets = _dedupe(_pin_names_to_prompt(assets, target))
 
     new: RunState = dict(state)  # type: ignore[assignment]
     new["assets"] = assets

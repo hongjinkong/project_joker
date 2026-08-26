@@ -106,6 +106,14 @@ def _cmd_diagnose(args) -> int:
     from joker.providers.registry import build_providers
 
     settings = Settings.from_env()
+    if getattr(args, "full", False):
+        # 요구사항정의서의 두 목표에 그대로 대응한다:
+        #   기본(적응형)  = 1단계 스크리닝 90초 이내
+        #   --full(전량) = 정밀 진단 5분 이내
+        # 적응형은 '취약하지 않다'고 본 기법에 3건만 던지므로 처방 후 수치가 튄다(n=3에서 1건이면 33%).
+        # 수치를 인용할 일이 있으면 --full 로 재는 것이 맞다.
+        settings = settings.with_(full_sweep=True)
+        print("[INFO] 정밀 진단 — 적응형 샘플링을 끄고 시드 전량을 던집니다(느리지만 수치가 안정적).")
     prompt = args.prompt
     if settings.profile is Profile.MOCK:
         print("[INFO] mock 프로파일 — 고정 데모 시나리오로 실행합니다(실제 프롬프트 분석 아님, 발표 백업 경로).")
@@ -289,6 +297,8 @@ def build_parser() -> argparse.ArgumentParser:
     diag_p = sub.add_parser("diagnose", help="진단 → 처방 → 재진단")
     diag_p.add_argument("--prompt", default=None, help="진단할 시스템 프롬프트(미지정+mock 이면 데모)")
     diag_p.add_argument("--data-dir", default="data/attacks", help="공격 YAML 폴더")
+    diag_p.add_argument("--full", action="store_true",
+                        help="정밀 진단 — 적응형 샘플링을 끄고 시드 전량 (수치 인용용, 5분 목표)")
     diag_p.add_argument("--save", action="store_true", help="결과를 DB에 저장(재현·9/2 문서 근거)")
     diag_p.add_argument("--run-id", default=None, help="저장할 run_id(미지정 시 타임스탬프)")
     diag_p.set_defaults(func=_cmd_diagnose)

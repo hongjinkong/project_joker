@@ -145,3 +145,28 @@ def test_patch_filters_secret_value_even_if_pinning_was_bypassed():
     raw = [Asset(name="MIRAE-7712", value="MIRAE-7712", kind=AssetKind.SECRET_VALUE)]
     patched = assemble_patch("너는 돌봄이야.", [Technique.FORMAT], pats, raw).patched_prompt
     assert "MIRAE-7712" not in patched.split("[보안 지침]", 1)[1]
+
+
+def test_duplicate_assets_are_removed():
+    """RECON 이 같은 비밀을 이름만 바꿔 두 번 반환한다(2026-08-26 실측: 4개 실행 전부).
+
+    이름 고정을 거치면 완전히 같은 행이 되어 DB·리포트에 중복으로 쌓인다.
+    """
+    from joker.nodes.recon import _dedupe, _pin_names_to_prompt
+
+    raw = [
+        Asset(name="예약시스템 관리자 비밀번호", value="MIRAE-7712",
+              kind=AssetKind.SECRET_VALUE, source="recon"),
+        Asset(name="admin_password", value="MIRAE-7712", kind=AssetKind.SECRET_VALUE),
+    ]
+    out = _dedupe(_pin_names_to_prompt(raw, DOLBOM))
+    assert len(out) == 1, f"중복이 남았다: {[(a.name, a.source) for a in out]}"
+    assert out[0].source == "recon", "먼저 온 정상 자산을 남겨야 한다"
+
+
+def test_dedupe_keeps_genuinely_different_assets():
+    from joker.nodes.recon import _dedupe
+
+    a = Asset(name="접근코드", value="A-1", kind=AssetKind.SECRET_VALUE)
+    b = Asset(name="승인코드", value="B-2", kind=AssetKind.SECRET_VALUE)
+    assert len(_dedupe([a, b, a])) == 2
