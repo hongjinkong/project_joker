@@ -47,7 +47,7 @@ def _targets():
 
 def _flip_validated(data_dir: Path, ids: set[str]) -> int:
     """YAML 을 줄 단위로 고쳐 `validated: false` → `true`. 주석·순서 보존."""
-    files = [data_dir / "core_25.yaml", data_dir / "indirect_doc.yaml"]
+    files = [data_dir / "core_25.yaml", data_dir / "indirect_doc.yaml", data_dir / "segmented.yaml"]
     files += sorted((data_dir / "ko_native").glob("*.yaml"))
     n = 0
     for f in files:

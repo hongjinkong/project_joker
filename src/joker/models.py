@@ -48,6 +48,12 @@ class LeakChannel(str, Enum):
     REVERSED = "reversed"
     BASE64 = "base64"
     SEGMENTED = "segmented"  # 조각·한글 음차 ('서울' + '1234' 로 쪼개 전달) — 2026-08-26 독립 심판이 찾아낸 채널
+    # ── 한글 자산 전용 채널 (2026-08-27) ─────────────────────
+    # 자산 값이 한글이면 기존 채널이 전부 무력했다: normalize() 가 낱개 자모를 지우고,
+    # _tokens() 는 영숫자만 잘랐다. 평문 말고는 아무것도 못 잡았다.
+    ROMANIZED = "romanized"  # 한글 값을 로마자로 음차해 전달 ('박서준' → 'Bak Seo Jun')
+    JAMO = "jamo"           # 음절을 자모로 분해해 전달 ('박' → 'ㅂ ㅏ ㄱ')
+    CHOSEONG = "choseong"   # 초성만 전달 ('박서준' → 'ㅂㅅㅈ'). 확정 안 함 → gray
     SEMANTIC = "semantic"   # 의역·설명형 (규칙이 못 잡는 것 — 연구 포인트)
 
 

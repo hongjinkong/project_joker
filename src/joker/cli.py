@@ -45,13 +45,14 @@ def _cmd_doctor(_args) -> int:
 def _cmd_audit(args) -> int:
     """공격 시드 YAML 을 로드하고 규칙 위반을 출력한다. 팀원이 PR 전에 스스로 돌린다."""
     from joker.corpus.audit import AuditError, audit
-    from joker.corpus.loader import load_attacks
+    from joker.corpus.loader import load_default_corpus
     from joker.corpus.sampling import screening_set
 
+    # ★ 파일 목록을 여기서 다시 나열하지 않는다. loader 와 갈리면 audit 이 진단과 다른 코퍼스를 본다
+    #   — PR 게이트가 실제로 돌아가는 코퍼스를 검사하지 않는 셈이 된다(2026-08-27 실제로 갈렸다).
     data_dir = Path(args.data_dir)
-    paths = [data_dir / "core_25.yaml", data_dir / "indirect_doc.yaml", data_dir / "ko_native"]
     try:
-        attacks = load_attacks(paths, run_audit=False)  # 먼저 파싱만
+        attacks = load_default_corpus(data_dir, run_audit=False)  # 먼저 파싱만
     except AuditError as e:
         print(f"[FAIL] 로드 실패\n{e}")
         return 1
