@@ -47,9 +47,27 @@ class Repository:
         con = self._connect()
         try:
             con.executescript(sql)  # 여러 CREATE 문을 한 번에
+            self._migrate(con)
             con.commit()
         finally:
             con.close()
+
+    # 이미 존재하는 DB 에는 CREATE TABLE IF NOT EXISTS 가 새 열을 안 만든다.
+    # 팀원 4명 + 학원 PC 에 이미 joker.db 가 깔려 있으므로 ALTER 로 따라잡는다.
+    # (열 추가만 한다. 삭제·타입 변경은 하지 않는다 — 기존 데이터를 잃지 않는 범위.)
+    _ADDED_COLUMNS = {
+        "tb_diagnosis": [
+            ("target_preset", "TEXT"),
+            ("is_approximation", "INTEGER"),
+        ],
+    }
+
+    def _migrate(self, con: sqlite3.Connection) -> None:
+        for table, cols in self._ADDED_COLUMNS.items():
+            have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+            for name, decl in cols:
+                if name not in have:
+                    con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     # ── 저장 ──────────────────────────────────────────────
     def save_run(self, state: RunState) -> str:
@@ -61,6 +79,13 @@ class Repository:
         prompt_hash = state.get("target_prompt_hash") or (
             "sha256:" + hashlib.sha256(target_prompt.encode("utf-8")).hexdigest()[:16]
         )
+        # ★ '무엇을 진단했는가' 는 파이프라인이 state["target"] 에 넣는다(계약 v0.2).
+        #   예전에는 CLI·asr_rerun 이 실행 후에 state["backend"]/["victim_model"] 을 손으로 꽂았는데,
+        #   그러면 **API 가 파이프라인을 직접 돌릴 때 NULL 로 저장된다.** target 을 1순위로 읽고
+        #   없을 때만 옛 키로 폴백한다.
+        tgt = state.get("target")
+        backend = (tgt.backend if tgt else None) or state.get("backend")
+        victim_model = (tgt.model if tgt else None) or state.get("victim_model")
 
         con = self._connect()
         try:
@@ -68,12 +93,15 @@ class Repository:
                 con.execute(
                     """INSERT OR REPLACE INTO tb_diagnosis
                        (run_id, created_at, env_profile, backend, model_victim,
+                        target_preset, is_approximation,
                         target_prompt, target_prompt_hash, persona, org,
                         inconclusive, grade, comparable, asr_before, asr_after, asr_delta, patched_prompt)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         run_id, _now(),
-                        state.get("env_profile"), state.get("backend"), state.get("victim_model"),
+                        state.get("env_profile"), backend, victim_model,
+                        tgt.preset if tgt else None,
+                        (1 if tgt.is_approximation else 0) if tgt else None,
                         target_prompt, prompt_hash,
                         state.get("persona"), state.get("org"),
                         1 if (report and report.inconclusive) else 0,
@@ -147,8 +175,11 @@ class Repository:
         con.row_factory = sqlite3.Row
         try:
             rows = con.execute(
-                """SELECT run_id, created_at, grade, inconclusive, asr_before, asr_after, persona
+                """SELECT run_id, created_at, grade, inconclusive, asr_before, asr_after, persona,
+                          model_victim AS target_model, is_approximation
                    FROM tb_diagnosis ORDER BY created_at DESC"""
+                # ★ 목록에도 모델이 온다(계약 v0.2). 모델이 다르면 등급을 나란히 비교하면 안 되므로
+                #   이력 화면이 행마다 모델명을 찍어야 한다.
             ).fetchall()
         finally:
             con.close()

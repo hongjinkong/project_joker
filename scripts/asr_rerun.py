@@ -33,6 +33,7 @@ from joker.deps import Deps
 from joker.models import Asset, AssetKind
 from joker.pipeline import new_state, prompt_hash, run_pipeline, step_recon
 from joker.providers.registry import build_providers
+from joker.providers.usage import collect as collect_usage
 from joker.store.sqlite import Repository
 
 # ── RECON 캐시 ────────────────────────────────────────────────
@@ -160,6 +161,9 @@ def main(argv=None) -> int:
     if not args.no_recon_cache and cache_path.exists():
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
     recon_src: dict[str, str] = {}   # 지시문별 'cached' / 'fresh' — 요약 문서에 남긴다
+    # 배치 전체 사용량. 지시문마다 provider 를 새로 만들므로(budget 단위 유지) 여기서 합산한다.
+    usage_calls = 0
+    usage_cost = 0.0
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # ★ run_id 에 victim 모델을 박는다(계약 v0.2). 모델을 바꿔 가며 돌리면 DB 의 victim_model
@@ -196,6 +200,9 @@ def main(argv=None) -> int:
             rows.append({"name": name, "error": f"{type(e).__name__}: {e}"})
             continue
         elapsed = time.monotonic() - t0
+        _u = collect_usage({"victim": deps.victim, "recon": deps.recon, "judge": deps.judge})
+        usage_calls += _u.total_calls
+        usage_cost += _u.total_cost_usd
 
         state["env_profile"] = settings.env_profile
         state["backend"] = settings.backend_for("victim")
@@ -238,6 +245,7 @@ def main(argv=None) -> int:
     avg_b = sum(r["before"] for r in ok) / len(ok)
     avg_a = sum(r["after"] for r in ok) / len(ok)
     print(f"\n{'═'*62}\n[종합] 지시문 {len(ok)}개 · victim={settings.victim_model}")
+    print(f"  호출 {usage_calls}회 · 추정 비용 ${usage_cost:.4f} (로컬 victim 은 무료. 단가 변동 가능)")
     print(f"  평균 ASR  처방 전 {avg_b:.1%} → 처방 후 {avg_a:.1%}  (개선 {(avg_b-avg_a)*100:+.1f}%p)")
     print("\n  기법별 합산 (여러 지시문을 더해 n 을 키운 값)")
     for tech, v in sorted(tech_tot.items(), key=lambda kv: -kv[1]["n"]):

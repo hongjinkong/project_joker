@@ -6,6 +6,9 @@
 --  2) 레거시 전용 4열(defense_level/verdict_gold/verdict_raw/blocked_by_filter)은
 --     125건 PoC 실측을 담기 위한 것. 신규 진단 행에서는 항상 NULL.
 --  3) victim_model/temperature/seed 3개가 없으면 결과를 재현할 수 없다 → 필수 저장.
+--  4) 이미 만들어진 DB 는 CREATE TABLE IF NOT EXISTS 로 갱신되지 않는다.
+--     열을 추가할 때는 Repository._migrate() 에 ALTER TABLE 을 같이 넣어야 한다.
+--     (2026-08-27 target_preset/is_approximation 추가 때 실제로 필요했다.)
 
 PRAGMA foreign_keys = ON;
 
@@ -19,6 +22,11 @@ CREATE TABLE IF NOT EXISTS tb_diagnosis (
     env_profile         TEXT,                        -- 예: macbook_m2_8gb
     backend             TEXT,                        -- mock | local | openai | full_local
     model_victim        TEXT,
+    -- 무엇을 진단했는가 (계약 v0.2 · 2026-08-27). 등급만 저장하고 대상을 안 남기면
+    -- "당신 챗봇 B등급" 이 실은 "대리 모델에 당신 지시문을 붙였을 때 B등급" 이라는 사실이 사라진다.
+    -- 이력 화면은 이 두 열이 있어야 '대리 모델 진단' 칩을 그릴 수 있다.
+    target_preset       TEXT,                        -- local_qwen3b | byok | ...
+    is_approximation    INTEGER,                     -- 1이면 사용자의 실제 모델이 아님
     -- 대상 지시문
     target_prompt       TEXT NOT NULL,
     target_prompt_hash  TEXT NOT NULL,               -- 중복 진단 캐시 키

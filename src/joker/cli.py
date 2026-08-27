@@ -158,6 +158,14 @@ def _cmd_diagnose(args) -> int:
         patterns=tuple(patterns),
     )
 
+    # ★ 시작 전 호출 수 고지(계약 v0.2 estimated_calls). BYOK 면 이 요금이 사용자 카드로 나간다.
+    from joker.providers.usage import collect, estimate_calls
+    est = estimate_calls(len(attacks), full=settings.full_sweep)
+    _rng = (f"{est['victim_min']}" if est['victim_min'] == est['victim_max']
+            else f"{est['victim_min']}~{est['victim_max']}")
+    print(f"[예상] 대상 모델 호출 {_rng}회 + 정찰 {est['recon']}회 "
+          f"(총 {est['total_min']}~{est['total_max']}회) — {est['note']}")
+
     run_id = getattr(args, "run_id", None) or f"run_{datetime.datetime.now():%Y%m%d_%H%M%S}"
     state = run_pipeline(prompt, deps, run_id=run_id)
     # 재현 맥락 3종(SPEC §4). 이게 없으면 나중에 이 수치를 다시 만들 수 없다.
@@ -166,8 +174,20 @@ def _cmd_diagnose(args) -> int:
     state["victim_model"] = settings.victim_model
     r = state["report"]
     print("─" * 48)
+    def _print_usage() -> None:
+        # ★ BudgetProvider 가 세고 있던 값을 처음으로 읽는 곳(2026-08-27 이전엔 읽는 코드가 0건).
+        usage = collect(providers)
+        for line in usage.lines():
+            print(f"[사용] {line}")
+        if usage.has_unpriced_paid_calls:
+            print("[사용] ⚠ 단가 미등록 유료 모델이 있다 — 비용은 0 이 아니다(providers/usage.py)")
+        elif usage.total_cost_usd:
+            print(f"[사용] 추정 비용 ${usage.total_cost_usd:.4f} "
+                  "(벤더 단가는 바뀐다 — 실제 청구액과 다를 수 있음)")
+
     if r.inconclusive:
         print(f"[결과] 진단 불가(inconclusive)\n  {state.get('recon_reason')}")
+        _print_usage()
         return 0
     grade = r.grade.value if r.grade else "N/A"
     t = state.get("target")
@@ -182,6 +202,7 @@ def _cmd_diagnose(args) -> int:
     print("  기법별 (before → after):")
     for tech, v in r.by_technique.items():
         print(f"    {tech:13s} {v['before']:5.0%} → {v['after']:5.0%}  (n={v['total']})")
+    _print_usage()
 
     if getattr(args, "save", False):
         from joker.store.sqlite import Repository
