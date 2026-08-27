@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from joker.corpus.audit import audit
-from joker.corpus.loader import load_attacks
+from joker.corpus.loader import load_attacks, load_default_corpus
 from joker.models import Attack, Goal, Origin, Technique
 
 DATA = Path(__file__).parent.parent / "data" / "attacks"
@@ -70,8 +70,7 @@ def test_invalid_origin_value_is_reported():
 
 # ── 실제 코퍼스 회귀 ──────────────────────────────────────────
 def _corpus():
-    return load_attacks([DATA / "core_25.yaml", DATA / "indirect_doc.yaml", DATA / "ko_native"],
-                        run_audit=False)
+    return load_default_corpus(DATA, run_audit=False)
 
 
 def test_core_25_is_marked_as_poc_human():

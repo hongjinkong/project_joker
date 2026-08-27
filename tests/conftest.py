@@ -95,9 +95,11 @@ def _recon_mock(assets: list[dict]) -> MockProvider:
 # 진단 대상 시드로는 core 25개를 그대로 쓴다(스크리닝 18건 전제가 성립해야 하므로).
 def _full_attacks():
     from pathlib import Path
-    from joker.corpus.loader import load_attacks
+    from joker.corpus.loader import load_default_corpus
     data = Path(__file__).parent.parent / "data" / "attacks"
-    return load_attacks([data / "core_25.yaml", data / "indirect_doc.yaml", data / "ko_native"], run_audit=False)
+    # ★ 파일 목록을 여기서 다시 나열하지 않는다 — loader 와 갈리면 테스트가 실제 코퍼스를 안 본다
+    #   (2026-08-27 segmented.yaml 추가 때 실제로 5군데가 갈렸다).
+    return load_default_corpus(data, run_audit=False)
 
 
 @pytest.fixture

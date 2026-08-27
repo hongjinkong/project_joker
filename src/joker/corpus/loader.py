@@ -84,11 +84,16 @@ def load_patterns(path: str | Path) -> list[DefensePattern]:
 
 
 def load_default_corpus(data_dir: str | Path = "data/attacks", *, run_audit: bool = True) -> list[Attack]:
-    """표준 위치의 코퍼스를 전부 로드: core_25 + indirect_doc + ko_native/*."""
+    """표준 위치의 코퍼스를 전부 로드: core_25 + indirect_doc + segmented + ko_native/*.
+
+    ★ 파일을 명시 나열하는 이유(글롭으로 안 하는 이유): 코퍼스에 뭐가 들어가는지가 곧 헤드라인
+      수치의 분모다. 폴더에 파일을 떨구는 것만으로 수치가 조용히 바뀌면 안 된다.
+    """
     base = Path(data_dir)
     paths: list[str | Path] = [
         base / "core_25.yaml",
         base / "indirect_doc.yaml",
+        base / "segmented.yaml",   # 2026-08-27 신설 — SEGMENTED 채널 근거 시드
         base / "ko_native",
     ]
     return load_attacks(paths, run_audit=run_audit)

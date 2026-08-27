@@ -51,7 +51,10 @@ def mask_secret(secret: str | None) -> str:
         return "<none>"
     if len(secret) <= 4:
         return "****"
-    return f"{secret[:2]}{'*' * (len(secret) - 4)}{secret[-2:]}"
+    # ★ 별표 개수를 고정한다(2026-08-27). 원래는 len(secret)-4 개라 마스킹된 문자열이
+    #   **키 길이를 그대로 알려줬다.** 길이는 키 종류를 좁히는 단서이고, doctor 출력이
+    #   한 줄에 200자씩 찍혀 읽히지도 않았다. 앞 2 + 고정 6 + 뒤 2.
+    return f"{secret[:2]}{'*' * 6}{secret[-2:]}"
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,19 @@ class Settings:
     # OpenAI(상용) 접속 — 로컬(llm_*)과 별도. 그래서 victim=로컬, recon/judge=openai 를 섞을 수 있다
     openai_base_url: str = "https://api.openai.com/v1"
     openai_api_key: str = ""
+    # ── 역할별 접속정보 (계약 v0.2 · 2026-08-27) ─────────────
+    # 왜 필요한가: openai_* 가 1쌍뿐이라 backend="openai" 인 모든 역할이 같은 엔드포인트를 공유했다.
+    #   → victim=Gemini + judge=OpenAI 처럼 **벤더를 섞는 게 구조적으로 불가능**했다.
+    #   실제 고객사는 저마다 다른 모델을 쓰므로(BYOK) 역할별로 따로 꽂을 수 있어야 한다.
+    # 비워 두면 기존 동작 그대로다(backend 에 따라 openai_* 또는 llm_* 로 폴백).
+    victim_base_url: str | None = None
+    victim_api_key: str | None = None
+    recon_base_url: str | None = None
+    recon_api_key: str | None = None
+    judge_base_url: str | None = None
+    judge_api_key: str | None = None
+    # 진단 대상 프리셋. "byok" 면 사용자가 자기 모델·키를 직접 지정한 것 → 근사치가 아니다.
+    target_preset: str = "local_qwen3b"
     temperature: float = 0.0   # 진단 실행은 temperature=0 고정(재현성 규칙 1)
     seed: int = 42
     max_calls: int = 200       # 진단 1회 호출 상한(유료 API 비용 방어)
@@ -111,6 +127,13 @@ class Settings:
             judge_backend=env.get("JUDGE_BACKEND") or None,
             openai_base_url=env.get("OPENAI_BASE_URL", cls.openai_base_url),
             openai_api_key=env.get("OPENAI_API_KEY", cls.openai_api_key),
+            victim_base_url=env.get("VICTIM_BASE_URL") or None,
+            victim_api_key=env.get("VICTIM_API_KEY") or None,
+            recon_base_url=env.get("RECON_BASE_URL") or None,
+            recon_api_key=env.get("RECON_API_KEY") or None,
+            judge_base_url=env.get("JUDGE_BASE_URL") or None,
+            judge_api_key=env.get("JUDGE_API_KEY") or None,
+            target_preset=env.get("TARGET_PRESET", cls.target_preset),
             max_calls=int(env.get("JOKER_MAX_CALLS", cls.max_calls)),
             request_timeout=float(env.get("JOKER_TIMEOUT", cls.request_timeout)),
             max_tokens=int(env.get("JOKER_MAX_TOKENS", cls.max_tokens)),
@@ -129,6 +152,53 @@ class Settings:
         """역할(victim/recon/judge)이 쓸 백엔드. 개별 지정 없으면 profile 을 따른다."""
         per_role = {"victim": self.victim_backend, "recon": self.recon_backend, "judge": self.judge_backend}
         return (per_role.get(role) or self.profile.value)
+
+    def endpoint_for(self, role: str) -> tuple[str, str]:
+        """역할이 쓸 (base_url, api_key). 역할별 지정이 있으면 그것을, 없으면 backend 기본값을.
+
+        이 폴백이 있어서 .env 를 안 바꾼 팀원 환경이 그대로 돈다(계약 v0.2 이전과 동일 동작).
+        """
+        per_role = {
+            "victim": (self.victim_base_url, self.victim_api_key),
+            "recon": (self.recon_base_url, self.recon_api_key),
+            "judge": (self.judge_base_url, self.judge_api_key),
+        }
+        base, key = per_role.get(role, (None, None))
+        if base:
+            return base, (key or "")
+        if self.backend_for(role) == "openai":
+            return self.openai_base_url, self.openai_api_key
+        return self.llm_base_url, self.llm_api_key
+
+    def model_for(self, role: str) -> str:
+        return {"victim": self.victim_model, "recon": self.recon_model,
+                "judge": self.judge_model}.get(role, self.victim_model)
+
+    @property
+    def is_approximation(self) -> bool:
+        """사용자의 실제 모델이 아니라 우리 대리 모델로 진단했는가.
+
+        byok = 사용자가 자기 base_url/model/key 를 준 경우 → 진짜 그 모델을 쟀으니 False.
+        """
+        return self.target_preset != "byok"
+
+    def target_info(self):
+        """리포트에 실을 '무엇을 진단했는가'. contracts v0.2 의 target 블록."""
+        from joker.models import TargetInfo  # 지연 import (config 는 최하위층)
+
+        notice = None
+        if self.is_approximation:
+            notice = (f"고객님 챗봇의 실제 모델이 아니라 대리 모델({self.victim_model})로 "
+                      "진단했습니다. 실제 모델의 결과는 다를 수 있습니다.")
+        return TargetInfo(
+            model=self.victim_model,
+            backend=self.backend_for("victim"),
+            preset=self.target_preset,
+            temperature=self.temperature,
+            seed=self.seed,
+            is_approximation=self.is_approximation,
+            approximation_notice=notice,
+        )
 
     def __repr__(self) -> str:  # 키를 절대 노출하지 않는다
         return (
