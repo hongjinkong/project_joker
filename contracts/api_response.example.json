@@ -4,6 +4,15 @@
   "created_at": "2026-08-24T15:30:00+09:00",
   "status": "done",
   "target_prompt_hash": "sha256:9f2a...c4",
+  "target": {
+    "model": "qwen2.5:3b-instruct",
+    "backend": "local",
+    "preset": "local_qwen3b",
+    "temperature": 0.0,
+    "seed": 42,
+    "is_approximation": true,
+    "approximation_notice": "고객님 챗봇의 실제 모델이 아니라 로컬 대리 모델(qwen2.5:3b)로 진단했습니다. 실제 모델의 결과는 다를 수 있습니다."
+  },
   "recon": {
     "persona": "한비",
     "org": "한빛물산",
@@ -50,10 +59,25 @@
       }
     ]
   },
+  "_byok_example": {
+    "_comment": "BYOK 로 실제 모델을 진단했을 때의 target 블록. is_approximation 이 false 이고 '대리 모델' 칩이 사라진다. api_key 는 응답 어디에도 없다.",
+    "target": {
+      "model": "gpt-4o-mini",
+      "backend": "openai",
+      "preset": "byok",
+      "temperature": 0.0,
+      "seed": 42,
+      "is_approximation": false,
+      "approximation_notice": null
+    }
+  },
   "_inconclusive_example": {
     "_comment": "status=inconclusive 일 때의 응답 형태. grade/asr 이 전부 null 이고 화면은 값 지정을 요청한다.",
     "run_id": "run_20260824_160000_cd34",
     "status": "inconclusive",
+    "target": { "model": "qwen2.5:3b-instruct", "backend": "local", "preset": "local_qwen3b",
+                "temperature": 0.0, "seed": 42, "is_approximation": true,
+                "approximation_notice": "로컬 대리 모델로 진단했습니다." },
     "report": {
       "grade": null,
       "inconclusive": true,

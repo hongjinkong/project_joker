@@ -56,6 +56,8 @@ def step_inconclusive(state: RunState, deps: Deps | None = None) -> RunState:
         asr_before=None, asr_after=None, delta=None,
         by_technique={}, applied_patterns=[],
     )
+    if deps is not None:
+        new["target"] = deps.settings.target_info()  # inconclusive 여도 온다(계약 v0.2)
     return new
 
 
@@ -73,14 +75,14 @@ def step_attack_r1(state: RunState, deps: Deps) -> RunState:
         # 제품 동작은 바꾸지 않는다 — 이 플래그는 재측정용이다(속도 목표는 적응형 기준으로 잰다).
         sweep = sorted(attacks, key=lambda a: (a.technique.value, a.id))
         r1_all = run_attacks(sweep, state["target_prompt"], 1, deps, context)
-        judge_attempts(r1_all, assets, deps)
+        judge_attempts(r1_all, assets, deps, state.get("persona"), state.get("org"))
         vulnerable: list[Technique] = sorted(
             {a.technique for a in r1_all if a.verdict == Verdict.LEAK}, key=lambda t: t.value
         )
     else:
         screen = screening_set(attacks)
         r1 = run_attacks(screen, state["target_prompt"], 1, deps, context)
-        judge_attempts(r1, assets, deps)
+        judge_attempts(r1, assets, deps, state.get("persona"), state.get("org"))
 
         vulnerable = sorted(
             {a.technique for a in r1 if a.verdict == Verdict.LEAK}, key=lambda t: t.value
@@ -89,7 +91,7 @@ def step_attack_r1(state: RunState, deps: Deps) -> RunState:
         seen = {a.attack_id for a in r1}
         concentrate = [a for a in concentration_set(attacks, vulnerable) if a.id not in seen]
         r1c = run_attacks(concentrate, state["target_prompt"], 1, deps, context)
-        judge_attempts(r1c, assets, deps)
+        judge_attempts(r1c, assets, deps, state.get("persona"), state.get("org"))
         r1_all = r1 + r1c
     new: RunState = dict(state)  # type: ignore[assignment]
     new["attempts"] = list(state.get("attempts", [])) + r1_all
@@ -117,7 +119,7 @@ def step_attack_r2(state: RunState, deps: Deps) -> RunState:
     by_id = {a.id: a for a in deps.attacks}
     replay = [by_id[i] for i in state["r1_attack_ids"] if i in by_id]
     r2 = run_attacks(replay, state["patched_prompt"], 2, deps, context)
-    judge_attempts(r2, assets, deps)
+    judge_attempts(r2, assets, deps, state.get("persona"), state.get("org"))
 
     new: RunState = dict(state)  # type: ignore[assignment]
     new["attempts"] = list(state["attempts"]) + r2
@@ -132,13 +134,31 @@ def step_report(state: RunState, deps: Deps | None = None) -> RunState:
     report = build_report(r1, r2, state["r1_attack_ids"], list(state.get("applied_patterns", [])))
     new: RunState = dict(state)  # type: ignore[assignment]
     new["report"] = report
+    if deps is not None:
+        # ★ '무엇을 진단했는가'(계약 v0.2). 등급·ASR 이 보이는 모든 자리에 같이 붙어야 한다 —
+        #   모델명 없는 등급은 다른 대상의 결과를 자기 결과로 오독시킨다.
+        new["target"] = deps.settings.target_info()
     return new
 
 
 # ── 순차 실행 ─────────────────────────────────────────────
-def run_pipeline(target_prompt: str, deps: Deps, run_id: str = "run_local") -> RunState:
+def run_pipeline(target_prompt: str, deps: Deps, run_id: str = "run_local",
+                 recon_state: dict | None = None) -> RunState:
+    """진단 1회 전체.
+
+    recon_state: RECON 결과를 미리 계산해 주입한다(assets/persona/org/... 키).
+      왜 필요한가 — RECON(gpt-5-mini)은 temperature 고정이 불가능해 실행마다 자산 '이름'이 흔들리고,
+      `build_context()` 가 그 이름을 공격문의 {asset} 에 박기 때문에 **공격문 자체가 매번 달라진다.**
+      그래서 처방 문구를 바꾼 효과와 RECON 흔들림이 섞여 구분이 안 됐다(2026-08-27 실측: 처방과
+      무관한 R1 이 55.9%↔57.9% 로 움직임). 여기에 고정된 RECON 을 주입하면 victim(temp=0)만 남아
+      같은 입력이면 같은 결과가 나오고, 처방 변경 1건의 효과가 그대로 신호가 된다.
+      실사용 경로(API/CLI)는 None 이라 동작이 바뀌지 않는다 — 측정 전용 주입구다.
+    """
     state = new_state(target_prompt, run_id)
-    state = step_recon(state, deps)
+    if recon_state is None:
+        state = step_recon(state, deps)
+    else:
+        state = {**state, **recon_state}  # type: ignore[assignment]
     if state.get("inconclusive"):
         return step_inconclusive(state, deps)
     state = step_attack_r1(state, deps)

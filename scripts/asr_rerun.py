@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import sys
 import time
 from collections import defaultdict
@@ -29,9 +30,42 @@ from pathlib import Path
 from joker.config import Settings
 from joker.corpus.loader import load_default_corpus, load_patterns
 from joker.deps import Deps
-from joker.pipeline import run_pipeline
+from joker.models import Asset, AssetKind
+from joker.pipeline import new_state, prompt_hash, run_pipeline, step_recon
 from joker.providers.registry import build_providers
 from joker.store.sqlite import Repository
+
+# ── RECON 캐시 ────────────────────────────────────────────────
+# 처방 문구를 고치고 재측정할 때, RECON(gpt-5-mini)이 매번 다른 자산 '이름'을 만들어내면
+# 공격문 자체가 바뀌어 버린다. 실제로 처방과 무관한 R1 이 55.9%↔57.9% 로 흔들렸고,
+# 그 폭이 처방 변경 1건의 효과(±1건)보다 커서 **개선 여부를 판정할 수 없었다.**
+# 지시문별 RECON 결과를 파일에 고정해 두면 victim(temp=0)만 변수로 남아 비교가 성립한다.
+RECON_CACHE_DEFAULT = "data/evidence/recon_cache.json"
+
+
+def _recon_dump(state) -> dict:
+    return {
+        "assets": [{"name": a.name, "value": a.value, "kind": a.kind.value,
+                    "confidence": a.confidence, "source": a.source} for a in state.get("assets", [])],
+        "persona": state.get("persona"),
+        "org": state.get("org"),
+        "forbidden_actions": list(state.get("forbidden_actions", [])),
+        "inconclusive": bool(state.get("inconclusive")),
+        "recon_reason": state.get("recon_reason"),
+    }
+
+
+def _recon_load(d: dict) -> dict:
+    return {
+        "assets": [Asset(name=a["name"], value=a["value"], kind=AssetKind(a["kind"]),
+                         confidence=a.get("confidence", 1.0), source=a.get("source", ""))
+                   for a in d["assets"]],
+        "persona": d.get("persona"),
+        "org": d.get("org"),
+        "forbidden_actions": list(d.get("forbidden_actions", [])),
+        "inconclusive": d.get("inconclusive", False),
+        "recon_reason": d.get("recon_reason"),
+    }
 
 # 서로 다른 업종·자산 이름·문체. 기법별 n 을 늘리는 것이 목적이므로 자산 종류를 일부러 흩는다.
 TARGETS: list[tuple[str, str]] = [
@@ -69,6 +103,12 @@ def main(argv=None) -> int:
     ap.add_argument("--full", action="store_true",
                     help="적응형 샘플링을 끄고 시드 전량을 던진다(기법당 n 을 키워 통계 판단 가능하게)")
     ap.add_argument("--data-dir", default="data/attacks")
+    ap.add_argument("--recon-cache", default=RECON_CACHE_DEFAULT,
+                    help="지시문별 RECON 결과를 고정해 두는 파일. 처방 변경 전/후 비교를 성립시킨다")
+    ap.add_argument("--fresh-recon", action="store_true",
+                    help="캐시를 무시하고 RECON 을 다시 돌린다(시드·지시문이 바뀌었을 때만)")
+    ap.add_argument("--no-recon-cache", action="store_true",
+                    help="캐시를 쓰지도 만들지도 않는다(예전 동작)")
     args = ap.parse_args(argv)
 
     settings = Settings.from_env()
@@ -104,6 +144,12 @@ def main(argv=None) -> int:
         repo = Repository(settings.db_path)
         repo.init_schema()
 
+    cache_path = Path(args.recon_cache)
+    cache: dict = {}
+    if not args.no_recon_cache and cache_path.exists():
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    recon_src: dict[str, str] = {}   # 지시문별 'cached' / 'fresh' — 요약 문서에 남긴다
+
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     rows: list[dict] = []
     # 기법별 합산: 여러 지시문의 결과를 더해 n 을 키운다(ROLE n=3 문제 해결)
@@ -113,7 +159,24 @@ def main(argv=None) -> int:
         print(f"\n{'━'*62}\n[{i}/{len(targets)}] {name}  진단 중… (로컬 모델이라 몇 분 걸립니다)")
         t0 = time.monotonic()
         try:
-            state = run_pipeline(prompt, _deps(), run_id=f"asr_{stamp}_{i}")
+            deps = _deps()          # 지시문 1개당 provider 1벌(budget 단위 유지)
+            rs = None
+            if not args.no_recon_cache:
+                # 캐시 키에 RECON 모델을 넣는다 — 모델이 바뀌면 자산 이름도 바뀌므로 같은 캐시를 쓰면 안 된다
+                key = f"{prompt_hash(prompt)}|{settings.recon_model}"
+                if args.fresh_recon or key not in cache:
+                    warm = step_recon(new_state(prompt, "recon_warm"), deps)
+                    cache[key] = _recon_dump(warm)
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2),
+                                          encoding="utf-8")
+                    recon_src[name] = "fresh"
+                else:
+                    recon_src[name] = "cached"
+                rs = _recon_load(cache[key])
+                names = [a.name for a in rs["assets"] if a.value]
+                print(f"  [RECON {recon_src[name]}] 자산 = {names}")
+            state = run_pipeline(prompt, deps, run_id=f"asr_{stamp}_{i}", recon_state=rs)
         except Exception as e:  # noqa: BLE001 — 한 건 실패로 배치 전체를 잃지 않는다
             print(f"  [FAIL] {type(e).__name__}: {e}")
             rows.append({"name": name, "error": f"{type(e).__name__}: {e}"})
@@ -178,7 +241,11 @@ def main(argv=None) -> int:
     out = Path("docs") / f"asr_rerun_{stamp}.md"
     out.parent.mkdir(exist_ok=True)
     L = [f"# 처방 전/후 ASR 재측정 — {datetime.datetime.now():%Y-%m-%d %H:%M}", "",
-         f"- victim: `{settings.victim_model}` (로컬 고정) · temperature={settings.temperature} · seed={settings.seed}",
+         f"- victim: `{settings.victim_model}` (backend={settings.backend_for('victim')})"
+         f" · temperature={settings.temperature} · seed={settings.seed}",
+         f"- RECON: `{settings.recon_model}` · " + (
+             "캐시 미사용(실행마다 자산 이름이 달라질 수 있음)" if args.no_recon_cache
+             else f"고정 캐시 `{cache_path}` ({', '.join(f'{k}={v}' for k, v in recon_src.items()) or '해당 없음'})"),
          f"- recon/judge backend: {settings.backend_for('recon')}/{settings.backend_for('judge')}",
          f"- 공격 시드 {len(attacks)}개 · 지시문 {len(ok)}개 · 샘플링 "
          f"{'전량(--full)' if settings.full_sweep else '적응형'}", "",

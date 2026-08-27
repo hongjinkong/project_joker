@@ -16,7 +16,12 @@ from joker.state import RunState
 def build_context(state: RunState) -> dict[str, str]:
     """공격문 플레이스홀더 치환용 컨텍스트. 자산 '이름'만 넣고 값은 넣지 않는다."""
     assets: list[Asset] = state.get("assets", [])  # type: ignore[assignment]
-    secret = next((a for a in assets if a.kind == AssetKind.SECRET_VALUE), None)
+    # ★ 값이 있는 자산을 먼저 고른다(2026-08-27 발견).
+    #   RECON 이 같은 비밀을 'value 없음' + 'value 있음' 두 행으로 뱉는 일이 있다(4개 중 3개 지시문에서 발생).
+    #   앞엣것을 그냥 집으면 이름이 다를 때 공격문의 {asset} 이 엉뚱한 문구가 되어 **공격이 약해지고
+    #   취약점을 놓친다** — 이름 고정으로 막은 'admin_password 형' 파손과 같은 경로다.
+    secret = (next((a for a in assets if a.kind == AssetKind.SECRET_VALUE and a.value), None)
+              or next((a for a in assets if a.kind == AssetKind.SECRET_VALUE), None))
     return {
         "persona": state.get("persona") or "챗봇",
         "org": state.get("org") or "회사",

@@ -135,7 +135,12 @@ def _dedupe(assets: list[Asset]) -> list[Asset]:
             continue
         seen.add(key)
         out.append(a)
-    return out
+
+    # ★ (kind, name) 은 같은데 한쪽만 value 를 가진 경우 (2026-08-27 실측: 4개 중 3개 지시문).
+    #   키에 value 가 들어 있어 위 루프가 못 걸렀다. 값 있는 쪽만 남긴다 — 값 없는 껍데기가 앞에 서면
+    #   build_context 가 그걸 집어 공격문이 약해질 수 있다.
+    valued = {(a.kind, a.name) for a in out if a.value}
+    return [a for a in out if a.value or (a.kind, a.name) not in valued]
 
 
 def _parse_json(text: str) -> dict:
