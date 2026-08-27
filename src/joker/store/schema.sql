@@ -26,7 +26,10 @@ CREATE TABLE IF NOT EXISTS tb_diagnosis (
     -- "당신 챗봇 B등급" 이 실은 "대리 모델에 당신 지시문을 붙였을 때 B등급" 이라는 사실이 사라진다.
     -- 이력 화면은 이 두 열이 있어야 '대리 모델 진단' 칩을 그릴 수 있다.
     target_preset       TEXT,                        -- local_qwen3b | byok | ...
-    is_approximation    INTEGER,                     -- 1이면 사용자의 실제 모델이 아님
+    fidelity            TEXT,                        -- proxy_model | real_model  ★ 이게 정본
+    -- ↓ 레거시(2026-08-27 반나절만 쓰임). fidelity 에서 파생해 같이 쓴다 — 둘이 어긋날 수 없다.
+    --   이름이 "근사냐 아니냐" 로 읽혀 BYOK 를 '실제 챗봇 진단' 으로 오독시켰다. 새 코드는 fidelity 를 봐라.
+    is_approximation    INTEGER,
     -- 대상 지시문
     target_prompt       TEXT NOT NULL,
     target_prompt_hash  TEXT NOT NULL,               -- 중복 진단 캐시 키

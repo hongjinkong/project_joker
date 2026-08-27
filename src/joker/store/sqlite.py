@@ -58,7 +58,8 @@ class Repository:
     _ADDED_COLUMNS = {
         "tb_diagnosis": [
             ("target_preset", "TEXT"),
-            ("is_approximation", "INTEGER"),
+            ("is_approximation", "INTEGER"),   # 레거시(파생)
+            ("fidelity", "TEXT"),              # 정본
         ],
     }
 
@@ -93,15 +94,16 @@ class Repository:
                 con.execute(
                     """INSERT OR REPLACE INTO tb_diagnosis
                        (run_id, created_at, env_profile, backend, model_victim,
-                        target_preset, is_approximation,
+                        target_preset, fidelity, is_approximation,
                         target_prompt, target_prompt_hash, persona, org,
                         inconclusive, grade, comparable, asr_before, asr_after, asr_delta, patched_prompt)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         run_id, _now(),
                         state.get("env_profile"), backend, victim_model,
                         tgt.preset if tgt else None,
-                        (1 if tgt.is_approximation else 0) if tgt else None,
+                        _val(tgt.fidelity) if tgt else None,
+                        (1 if tgt.is_proxy_model else 0) if tgt else None,   # 레거시 파생
                         target_prompt, prompt_hash,
                         state.get("persona"), state.get("org"),
                         1 if (report and report.inconclusive) else 0,
@@ -176,7 +178,7 @@ class Repository:
         try:
             rows = con.execute(
                 """SELECT run_id, created_at, grade, inconclusive, asr_before, asr_after, persona,
-                          model_victim AS target_model, is_approximation
+                          model_victim AS target_model, fidelity, is_approximation
                    FROM tb_diagnosis ORDER BY created_at DESC"""
                 # ★ 목록에도 모델이 온다(계약 v0.2). 모델이 다르면 등급을 나란히 비교하면 안 되므로
                 #   이력 화면이 행마다 모델명을 찍어야 한다.

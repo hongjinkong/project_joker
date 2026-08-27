@@ -39,7 +39,8 @@ def test_save_run_persists_the_target_block(repo, mock_deps_vulnerable):
     row = repo.load_run("r1")
     assert row["model_victim"] == mock_deps_vulnerable.settings.victim_model
     assert row["target_preset"] == mock_deps_vulnerable.settings.target_preset
-    assert row["is_approximation"] == 1
+    assert row["fidelity"] == "proxy_model"
+    assert row["is_approximation"] == 1      # 레거시 파생 — fidelity 와 어긋나면 안 된다
 
 
 def test_save_run_reads_target_not_the_hand_set_keys(repo, mock_deps_vulnerable):
@@ -64,6 +65,7 @@ def test_byok_run_is_not_marked_as_approximation(repo, mock_deps_vulnerable):
     )
     repo.save_run(run_pipeline(TARGET_WITH_SECRET, deps, run_id="r3"))
     row = repo.load_run("r3")
+    assert row["fidelity"] == "real_model"
     assert row["is_approximation"] == 0
     assert row["model_victim"] == "gpt-4o-mini"
 
@@ -73,7 +75,7 @@ def test_list_runs_includes_the_model(repo, mock_deps_vulnerable):
     repo.save_run(run_pipeline(TARGET_WITH_SECRET, mock_deps_vulnerable, run_id="r4"))
     row = repo.list_runs()[0]
     assert "target_model" in row and row["target_model"]
-    assert "is_approximation" in row
+    assert row["fidelity"] == "proxy_model"
 
 
 def test_migration_adds_columns_to_an_existing_db(tmp_path):
@@ -101,7 +103,7 @@ def test_migration_adds_columns_to_an_existing_db(tmp_path):
     con = sqlite3.connect(db)
     cols = {r[1] for r in con.execute("PRAGMA table_info(tb_diagnosis)")}
     con.close()
-    assert {"target_preset", "is_approximation"} <= cols
+    assert {"target_preset", "is_approximation", "fidelity"} <= cols
 
 
 def test_migration_is_idempotent(repo):

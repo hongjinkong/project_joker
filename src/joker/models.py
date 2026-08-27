@@ -159,17 +159,43 @@ class PatchResult:
     applied_patterns: list[str] = field(default_factory=list)
 
 
+class Fidelity(str, Enum):
+    """진단이 '실물'에 얼마나 가까운가. contracts v0.3.
+
+    ★ 왜 불리언(is_approximation)을 버렸나 (2026-08-27)
+      `true/false` 는 "근사냐 아니냐" 로 읽힌다. 그래서 BYOK 로 실제 모델을 쓰면 false 가 되고,
+      사용자는 **"이제 진짜 내 챗봇을 잰 것"** 으로 받아들인다. 사실이 아니다 —
+      모델만 같아졌을 뿐 배포된 서비스(앞단 필터·RAG·툴·대화 이력)는 여전히 재현되지 않는다.
+      이름 붙은 단계로 바꾸면 어느 값도 '실제 서비스' 로 읽히지 않는다.
+    """
+
+    PROXY_MODEL = "proxy_model"    # 지시문만 사용자 것, 모델은 우리 대리 모델
+    REAL_MODEL = "real_model"      # 지시문 + 모델까지 사용자의 실제 것 (BYOK)
+    # ★ 예약값 — SPEC §10 2순위(챗봇 주소 연결 + 소유권 확인). **미구현이며 엔진은 절대 내지 않는다.**
+    #   여기 자리를 비워 두는 이유는 goal 필드와 같다: 나중에 축이 붙을 때 스키마를 안 건드리려고.
+    #   테스트(test_engine_never_claims_real_service)가 엔진이 이 값을 내지 않는 것을 강제한다.
+    REAL_SERVICE = "real_service"
+
+
+# 어떤 진단이든 항상 붙는 범위 고지. 이 문장이 빠지면 '지시문+모델 진단' 이 '서비스 진단' 으로 읽힌다.
+SCOPE_NOTICE = (
+    "이 진단은 배포된 챗봇 서비스가 아니라 '시스템 지시문 + 모델' 조합을 대상으로 합니다. "
+    "실제 서비스의 앞단 입력 필터·RAG 문서·툴 호출·대화 이력·출력 후처리는 재현되지 않습니다."
+)
+
+
 @dataclass(frozen=True)
 class TargetInfo:
-    """무엇을 진단했는가 — contracts/api_contract.md v0.2 의 `target` 블록.
+    """무엇을 진단했는가 — contracts/api_contract.md 의 `target` 블록.
 
     ★ 왜 리포트에 이게 있어야 하나 (2026-08-27)
       이전 리포트는 "당신 챗봇은 B등급"이라고 말했지만 실제로 잰 것은
       "qwen2.5:3b 에 당신 지시문을 붙였을 때 B등급" 이었다. 고객사마다 쓰는 모델이 다르므로
       모델명이 빠진 등급은 **다른 대상의 결과를 자기 결과로 오독시킨다** — 함정②와 같은 급의 오답.
 
-    is_approximation: 사용자의 실제 모델이 아니라 우리 대리 모델로 쟀다는 표시.
-      화면은 이 값이 True 면 등급 옆에 '대리 모델 진단' 칩을 반드시 띄운다.
+    notice 가 두 개인 이유 — 하는 일이 다르다:
+      scope_notice : **항상** 붙는다. 우리가 원래 안 보는 영역(서비스 계층)을 알린다.
+      model_notice : PROXY_MODEL 일 때만. 이번 실행이 대리 모델이었음을 알린다.
     """
 
     model: str
@@ -177,8 +203,14 @@ class TargetInfo:
     preset: str
     temperature: float
     seed: int
-    is_approximation: bool
-    approximation_notice: str | None = None
+    fidelity: Fidelity
+    scope_notice: str = SCOPE_NOTICE
+    model_notice: str | None = None
+
+    @property
+    def is_proxy_model(self) -> bool:
+        """화면이 '대리 모델 진단' 칩을 띄울지. (범위 고지는 이것과 무관하게 항상 띄운다)"""
+        return self.fidelity == Fidelity.PROXY_MODEL
 
 
 @dataclass

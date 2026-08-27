@@ -19,6 +19,9 @@ import urllib.error
 import urllib.request
 
 from joker.providers.base import CallResult, Usage
+# ★ 오류 본문에 키가 섞여 올 수 있다(서버가 요청을 되돌려주는 경우). 마스킹하고 찍는다.
+#   safety/masking.py 가 정의만 있고 호출부가 0건이었는데(2026-08-27 구조 점검), 여기가 첫 배선이다.
+from joker.safety.masking import mask_secrets
 
 # gpt-5 계열·o-시리즈: 신형 파라미터 규격을 쓰는 모델 접두사
 _RESTRICTED_PREFIXES = ("gpt-5", "gpt5", "o1", "o3", "o4")
@@ -81,9 +84,29 @@ class OpenAICompatProvider:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # ★ 2026-08-27: 예전엔 base_url 과 "HTTP Error 404" 만 찍었다. 그걸론 원인을 알 수 없다.
+            #   실제로 exaone3.5:7.8b 를 받아놓고 victim 호출이 404 났는데, 모델명도 서버 설명도
+            #   안 보여서 '엔드포인트 문제인지 모델 문제인지' 를 구분할 수 없었다.
+            #   서버는 본문에 이유를 담아 준다(Ollama: {"error":"model 'x' not found"}).
+            body = ""
+            try:
+                body = e.read().decode("utf-8", "replace")[:400]
+            except Exception:  # noqa: BLE001 — 본문을 못 읽어도 나머지 정보는 살린다
+                pass
+            hint = ""
+            if e.code == 404:
+                hint = (" · 404 는 대개 '그 모델이 서버에 없음' 이다. "
+                        "로컬이면 `ollama list` 로 정확한 태그를 확인할 것")
+            raise ProviderError(
+                f"LLM 호출 실패 [{e.code}] model={self.model!r} url={self.base_url}"
+                f"{hint}\n  서버 응답: {mask_secrets(body)}"
+            ) from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             # 타임아웃(TimeoutError)은 URLError 가 아니라 OSError 계열 → 함께 잡는다
-            raise ProviderError(f"LLM 호출 실패({self.base_url}): {e}") from e
+            raise ProviderError(
+                f"LLM 호출 실패 model={self.model!r} url={self.base_url}: {e}"
+            ) from e
         latency_ms = int((time.monotonic() - start) * 1000)
 
         # 신형 모델이 추론에 토큰을 다 쓰면 content 가 None 일 수 있다 → 빈 문자열로 방어

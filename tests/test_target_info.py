@@ -85,22 +85,59 @@ def test_report_carries_what_was_diagnosed(mock_deps_vulnerable):
     assert t.seed == mock_deps_vulnerable.settings.seed
 
 
-def test_default_preset_is_flagged_as_approximation(mock_deps_vulnerable):
-    """대리 모덴로 쟀으면 그렇다고 말해야 한다. 화면이 이 값으로 칩을 띄운다."""
+def test_default_preset_is_flagged_as_proxy_model(mock_deps_vulnerable):
+    """대리 모델로 쟀으면 그렇다고 말해야 한다. 화면이 이 값으로 칩을 띄운다."""
+    from joker.models import Fidelity
+
     state = run_pipeline(TARGET_WITH_SECRET, mock_deps_vulnerable, run_id="t_appx")
     t = state["target"]
-    assert t.is_approximation is True
-    assert t.approximation_notice and t.model in t.approximation_notice
+    assert t.fidelity == Fidelity.PROXY_MODEL
+    assert t.is_proxy_model is True
+    assert t.model_notice and t.model in t.model_notice
 
 
-def test_byok_is_not_an_approximation(mock_deps_vulnerable):
-    """사용자가 자기 모델을 지정했으면 진짜 그 모델을 잰 것이다."""
+def test_byok_is_real_model_but_still_not_the_service(mock_deps_vulnerable):
+    """★ BYOK 는 '실제 모델' 이지 '실제 챗봇' 이 아니다.
+
+    불리언(is_approximation)이 false 가 되면 사용자는 "이제 진짜 내 챗봇을 잰 것" 으로 읽는다.
+    모델만 같아졌을 뿐 배포 서비스(앞단 필터·RAG·툴·대화 이력)는 재현되지 않았다.
+    그래서 scope_notice 는 BYOK 여도 그대로 남아야 한다.
+    """
+    from joker.models import Fidelity
+
     deps = _mock_deps(mock_deps_vulnerable, target_preset="byok", victim_model="gpt-4o-mini")
-    state = run_pipeline(TARGET_WITH_SECRET, deps, run_id="t_byok")
-    t = state["target"]
-    assert t.is_approximation is False
-    assert t.approximation_notice is None
+    t = run_pipeline(TARGET_WITH_SECRET, deps, run_id="t_byok")["target"]
+    assert t.fidelity == Fidelity.REAL_MODEL
+    assert t.is_proxy_model is False
+    assert t.model_notice is None
     assert t.model == "gpt-4o-mini"
+    assert t.scope_notice, "BYOK 라고 범위 고지를 숨기면 안 된다"
+
+
+def test_scope_notice_is_always_present_and_identical(mock_deps_vulnerable):
+    """범위 고지는 fidelity 와 무관하게 항상, 같은 문장으로 온다."""
+    from joker.models import SCOPE_NOTICE
+
+    proxy = run_pipeline(TARGET_WITH_SECRET, mock_deps_vulnerable, run_id="t_s1")["target"]
+    byok = run_pipeline(TARGET_WITH_SECRET,
+                        _mock_deps(mock_deps_vulnerable, target_preset="byok"),
+                        run_id="t_s2")["target"]
+    assert proxy.scope_notice == byok.scope_notice == SCOPE_NOTICE
+    assert "배포된 챗봇 서비스가 아니라" in SCOPE_NOTICE
+
+
+def test_engine_never_claims_real_service(mock_deps_vulnerable):
+    """★ REAL_SERVICE 는 스키마 예약값일 뿐 구현이 없다.
+
+    배포 서비스 직접 진단은 SPEC §10 2순위다. 코드가 낼 수 없는 값을 리포트가 주장하면 거짓말이다.
+    구현이 생기면 이 테스트를 고쳐라 — 그 전에 값만 새어 나가는 것을 막는다.
+    """
+    from joker.models import Fidelity
+
+    for preset in ("local_qwen3b", "byok", "무엇이든"):
+        deps = _mock_deps(mock_deps_vulnerable, target_preset=preset)
+        t = run_pipeline(TARGET_WITH_SECRET, deps, run_id=f"t_rs_{preset}")["target"]
+        assert t.fidelity != Fidelity.REAL_SERVICE
 
 
 def test_inconclusive_run_still_reports_the_target(mock_deps):
