@@ -151,6 +151,9 @@ def main(argv=None) -> int:
     recon_src: dict[str, str] = {}   # 지시문별 'cached' / 'fresh' — 요약 문서에 남긴다
 
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # ★ run_id 에 victim 모델을 박는다(계약 v0.2). 모델을 바꿔 가며 돌리면 DB 의 victim_model
+    #   컬럼으로만 갈라졌고 run_id·파일명만 보고는 어느 모델인지 알 수 없었다.
+    mtag = "".join(ch if ch.isalnum() else "-" for ch in settings.victim_model)[:20].strip("-")
     rows: list[dict] = []
     # 기법별 합산: 여러 지시문의 결과를 더해 n 을 키운다(ROLE n=3 문제 해결)
     tech_tot: dict[str, dict[str, int]] = defaultdict(lambda: {"before": 0, "after": 0, "n": 0})
@@ -176,7 +179,7 @@ def main(argv=None) -> int:
                 rs = _recon_load(cache[key])
                 names = [a.name for a in rs["assets"] if a.value]
                 print(f"  [RECON {recon_src[name]}] 자산 = {names}")
-            state = run_pipeline(prompt, deps, run_id=f"asr_{stamp}_{i}", recon_state=rs)
+            state = run_pipeline(prompt, deps, run_id=f"asr_{stamp}_{mtag}_{i}", recon_state=rs)
         except Exception as e:  # noqa: BLE001 — 한 건 실패로 배치 전체를 잃지 않는다
             print(f"  [FAIL] {type(e).__name__}: {e}")
             rows.append({"name": name, "error": f"{type(e).__name__}: {e}"})

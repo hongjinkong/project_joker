@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from joker.models import Asset, Attempt, Report, Technique
+from joker.models import Asset, Attempt, Report, TargetInfo, Technique
 
 
 class RunState(TypedDict, total=False):
@@ -41,6 +41,7 @@ class RunState(TypedDict, total=False):
 
     # ── REPORT ────────────────────────────────────────────
     report: Report | None
+    target: TargetInfo | None     # '무엇을 진단했는가'(계약 v0.2). ★ 여기 선언 안 하면 함정③ 재발
 
 
 # 두 실행 경로가 만든 state 의 키가 이 집합을 벗어나거나, 서로 다르면 테스트가 실패한다.

@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 def _cmd_doctor(_args) -> int:
-    from joker.config import Settings
+    from joker.config import mask_secret, Settings
 
     ok = True
     lg = importlib.util.find_spec("langgraph") is not None
@@ -33,6 +33,10 @@ def _cmd_doctor(_args) -> int:
     if "openai" in (s.backend_for("victim"), s.backend_for("recon"), s.backend_for("judge")):
         print(f"[INFO] openai base_url = {s.openai_base_url} · key = {'설정됨' if s.openai_api_key else '(없음⚠)'}")
     print(f"[INFO] 모델: victim={s.victim_model} · recon={s.recon_model} · judge={s.judge_model}")
+    for role in ("victim", "recon", "judge"):
+        base, key = s.endpoint_for(role)
+        print(f"[INFO] {role:6} → {base} · key={mask_secret(key)}")
+    print(f"[INFO] target_preset={s.target_preset} · 근사치 여부={s.is_approximation}")
     if all(b == "mock" for b in (s.backend_for('victim'), s.backend_for('recon'), s.backend_for('judge'))):
         print("[WARN] 전부 mock 이라 실제 모델을 호출하지 않습니다. 실측하려면 JOKER_PROFILE=local")
     return 0 if ok else 1
@@ -122,6 +126,24 @@ def _cmd_diagnose(args) -> int:
         print("[FAIL] --prompt \"진단할 시스템 프롬프트\" 가 필요합니다.")
         return 1
 
+    # ★ 대상 모델 override (계약 v0.2). 안 주면 .env 그대로 — 기존 동작 불변.
+    #   --victim-base-url 을 주면 그건 '사용자가 자기 모델을 지정한 것'이므로 근사치가 아니다.
+    over: dict = {}
+    if getattr(args, "victim_model", None):
+        over["victim_model"] = args.victim_model
+    if getattr(args, "victim_backend", None):
+        over["victim_backend"] = args.victim_backend
+    if getattr(args, "victim_base_url", None):
+        over["victim_base_url"] = args.victim_base_url
+        over.setdefault("target_preset", "byok")
+    if getattr(args, "target_preset", None):
+        over["target_preset"] = args.target_preset
+    if over:
+        settings = settings.with_(**over)
+        print(f"[INFO] 진단 대상: {settings.victim_model} "
+              f"(backend={settings.backend_for('victim')}, preset={settings.target_preset}, "
+              f"근사치={settings.is_approximation})")
+
     data_dir = Path(args.data_dir)
     attacks = load_default_corpus(str(data_dir), run_audit=False)
     patterns = load_patterns(data_dir.parent / "defenses" / "patterns.yaml")
@@ -147,6 +169,11 @@ def _cmd_diagnose(args) -> int:
         print(f"[결과] 진단 불가(inconclusive)\n  {state.get('recon_reason')}")
         return 0
     grade = r.grade.value if r.grade else "N/A"
+    t = state.get("target")
+    if t:
+        # 등급만 찍고 모델을 안 찍으면 다른 대상의 결과로 오독된다(계약 v0.2)
+        chip = " · ⚠ 대리 모델 진단(실제 모델 결과는 다를 수 있음)" if t.is_approximation else ""
+        print(f"[대상] {t.model} (backend={t.backend}, temp={t.temperature}, seed={t.seed}){chip}")
     print(f"[결과] 등급 {grade} · comparable={r.comparable}")
     print(f"  ASR  처방 전 {r.asr_before:.0%} → 처방 후 {r.asr_after:.0%}   (개선 {r.delta:+.0%})")
     print(f"  취약 기법: {', '.join(t.value for t in state['vulnerable_techniques']) or '없음'}")
@@ -301,6 +328,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="정밀 진단 — 적응형 샘플링을 끄고 시드 전량 (수치 인용용, 5분 목표)")
     diag_p.add_argument("--save", action="store_true", help="결과를 DB에 저장(재현·9/2 문서 근거)")
     diag_p.add_argument("--run-id", default=None, help="저장할 run_id(미지정 시 타임스탬프)")
+    # ── 진단 대상 모델(계약 v0.2) ──────────────────────────
+    diag_p.add_argument("--victim-model", default=None,
+                        help="진단 대상 모델. 예: exaone3.5:7.8b, gpt-4o-mini (미지정 시 .env)")
+    diag_p.add_argument("--victim-backend", default=None, choices=["mock", "local", "openai"],
+                        help="대상 모델을 어디로 호출할지")
+    diag_p.add_argument("--victim-base-url", default=None,
+                        help="대상 모델 엔드포인트(OpenAI 호환). BYOK 진단용")
+    diag_p.add_argument("--target-preset", default=None,
+                        help="프리셋 id. 'byok' 로 주면 리포트의 is_approximation 이 False 가 된다")
     diag_p.set_defaults(func=_cmd_diagnose)
     audit_p = sub.add_parser("audit", help="공격 시드 YAML 검증")
     audit_p.add_argument("--data-dir", default="data/attacks", help="공격 YAML 폴더")

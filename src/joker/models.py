@@ -153,6 +153,28 @@ class PatchResult:
     applied_patterns: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class TargetInfo:
+    """무엇을 진단했는가 — contracts/api_contract.md v0.2 의 `target` 블록.
+
+    ★ 왜 리포트에 이게 있어야 하나 (2026-08-27)
+      이전 리포트는 "당신 챗봇은 B등급"이라고 말했지만 실제로 잰 것은
+      "qwen2.5:3b 에 당신 지시문을 붙였을 때 B등급" 이었다. 고객사마다 쓰는 모델이 다르므로
+      모델명이 빠진 등급은 **다른 대상의 결과를 자기 결과로 오독시킨다** — 함정②와 같은 급의 오답.
+
+    is_approximation: 사용자의 실제 모델이 아니라 우리 대리 모델로 쟀다는 표시.
+      화면은 이 값이 True 면 등급 옆에 '대리 모델 진단' 칩을 반드시 띄운다.
+    """
+
+    model: str
+    backend: str
+    preset: str
+    temperature: float
+    seed: int
+    is_approximation: bool
+    approximation_notice: str | None = None
+
+
 @dataclass
 class Report:
     """최종 리포트 = tb_diagnosis.report. API 응답의 핵심(contracts/ 와 일치)."""

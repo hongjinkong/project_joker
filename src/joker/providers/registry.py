@@ -40,10 +40,9 @@ def _build_one(role: str, model: str, settings: Settings) -> LLMProvider:
     if backend == "mock":
         return _mock_for(role)
 
-    if backend == "openai":
-        base_url, api_key = settings.openai_base_url, settings.openai_api_key
-    else:  # local / full_local → Ollama 등 로컬 OpenAI 호환
-        base_url, api_key = settings.llm_base_url, settings.llm_api_key
+    # 역할별 접속정보(계약 v0.2). 지정이 없으면 backend 기본값으로 폴백한다.
+    # 이게 있어야 victim=고객 모델(BYOK) + judge=우리 OpenAI 처럼 벤더를 섞을 수 있다.
+    base_url, api_key = settings.endpoint_for(role)
 
     inner = OpenAICompatProvider(
         base_url=base_url, api_key=api_key, model=model,
