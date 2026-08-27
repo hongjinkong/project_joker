@@ -56,6 +56,8 @@ def step_inconclusive(state: RunState, deps: Deps | None = None) -> RunState:
         asr_before=None, asr_after=None, delta=None,
         by_technique={}, applied_patterns=[],
     )
+    if deps is not None:
+        new["target"] = deps.settings.target_info()  # inconclusive 여도 온다(계약 v0.2)
     return new
 
 
@@ -132,6 +134,10 @@ def step_report(state: RunState, deps: Deps | None = None) -> RunState:
     report = build_report(r1, r2, state["r1_attack_ids"], list(state.get("applied_patterns", [])))
     new: RunState = dict(state)  # type: ignore[assignment]
     new["report"] = report
+    if deps is not None:
+        # ★ '무엇을 진단했는가'(계약 v0.2). 등급·ASR 이 보이는 모든 자리에 같이 붙어야 한다 —
+        #   모델명 없는 등급은 다른 대상의 결과를 자기 결과로 오독시킨다.
+        new["target"] = deps.settings.target_info()
     return new
 
 
