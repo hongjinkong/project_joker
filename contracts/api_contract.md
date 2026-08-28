@@ -1,4 +1,4 @@
-# API 응답 계약 v0.2 — 화면설계서(8/31) 입력
+# API 응답 계약 v0.3 — 화면설계서(8/31) 입력
 
 > **이 문서가 화면의 진실이다.** 채효석은 이 응답 필드만 보고 Figma 를 그리면 된다.
 > FastAPI *구현*은 다음 주지만, 이 계약이 고정본이다. 필드가 바뀌면 여기부터 고친다.
@@ -9,7 +9,8 @@
 | 버전 | 날짜 | 바뀐 것 |
 |---|---|---|
 | v0.1 | 2026-08-25 | 최초 고정 |
-| **v0.2** | **2026-08-27** | **진단 대상 모델 선택(`target`) 추가.** 고객사마다 쓰는 모델이 다르므로 "무슨 모델을 진단했는가"가 제품 요건이 됐다. ①요청에 `target` ②응답에 `target` + **`is_approximation`** ③프리셋 목록 엔드포인트 `GET /api/models` ④BYOK(고객 키) 취급 규칙 |
+| **v0.3** | **2026-08-27** | **`is_approximation`(bool) → `fidelity`(단계) 교체.** 불리언은 "근사냐 아니냐" 로 읽혀서, BYOK 로 false 가 되는 순간 **"이제 진짜 내 챗봇을 잰 것"** 으로 오독됐다. 사실이 아니다 — 모델만 같아졌을 뿐 배포 서비스는 여전히 재현되지 않는다. `scope_notice` 를 **항상** 실어 그 사실을 못 놓치게 했다. |
+| v0.2 | 2026-08-27 | **진단 대상 모델 선택(`target`) 추가.** 고객사마다 쓰는 모델이 다르므로 "무슨 모델을 진단했는가"가 제품 요건이 됐다. ①요청에 `target` ②응답에 `target` + **`is_approximation`** ③프리셋 목록 엔드포인트 `GET /api/models` ④BYOK(고객 키) 취급 규칙 |
 
 ## 엔드포인트 5개
 
@@ -68,7 +69,8 @@
 | 진단 1회가 끝나면 메모리에서 버린다. 다음 진단은 다시 입력받는다 | NFR-DV-002(입력 정보 즉시 폐기). "기억해두기" 체크박스를 **만들지 않는다** |
 
 > 화면: 키 입력란은 `type=password`, 붙여넣기 후 즉시 마스킹, **"저장되지 않습니다"를 입력란 옆에 상시 표기.**
-> 키를 안 주고 싶은 사용자를 위한 폴백이 프리셋(로컬 모델) 진단이며, 그때는 `is_approximation: true` 가 붙는다.
+> 키를 안 주고 싶은 사용자를 위한 폴백이 프리셋(로컬 모델) 진단이며, 그때는 `fidelity: "proxy_model"` 이 된다.
+> **BYOK 라도 `real_service` 가 되지는 않는다** — 모델이 같아질 뿐 배포 서비스는 재현되지 않는다.
 
 ---
 
@@ -92,8 +94,9 @@
   "preset": "local_qwen3b",
   "temperature": 0.0,
   "seed": 42,
-  "is_approximation": true,
-  "approximation_notice": "고객님 챗봇의 실제 모델이 아니라 로컬 대리 모델(qwen2.5:3b)로 진단했습니다. 실제 모델의 결과는 다를 수 있습니다."
+  "fidelity": "proxy_model",
+  "scope_notice": "이 진단은 배포된 챗봇 서비스가 아니라 '시스템 지시문 + 모델' 조합을 대상으로 합니다. 실제 서비스의 앞단 입력 필터·RAG 문서·툴 호출·대화 이력·출력 후처리는 재현되지 않습니다.",
+  "model_notice": "고객님 챗봇의 실제 모델이 아니라 대리 모델(qwen2.5:3b-instruct)로 진단했습니다. 실제 모델에서는 결과가 다를 수 있습니다."
 }
 ```
 
@@ -103,12 +106,20 @@
 | `backend` | `"local" \| "openai" \| "mock"` | 어디로 호출했는가 |
 | `preset` | `string` | `GET /api/models` 의 id. `"byok"` 면 사용자 지정 |
 | `temperature` / `seed` | `float` / `int` | 재현 조건. 상세 패널에만 |
-| **`is_approximation`** | `bool` | **`true` 면 사용자의 실제 모델이 아닌 대리 모델로 잰 것이다** |
-| `approximation_notice` | `string \| null` | `is_approximation=true` 일 때의 안내 문구 |
+| **`fidelity`** | `"proxy_model" \| "real_model"` | **무엇까지 사용자의 실물이었나.** `proxy_model`=지시문만(모델은 우리 대리) · `real_model`=지시문+모델(BYOK) |
+| **`scope_notice`** | `string` | **항상 온다.** 우리가 원래 안 보는 영역(배포 서비스 계층)을 알린다 |
+| `model_notice` | `string \| null` | `fidelity="proxy_model"` 일 때만. 이번 실행이 대리 모델이었다는 안내 |
 
-> **`is_approximation: true` 를 표시하지 않고 등급만 그리면 `inconclusive` 를 "안전"으로 그리는 것과 같은 급의 사고다.**
-> 다른 모델의 결과를 자기 챗봇의 결과로 오독시킨다. 등급 배지 바로 옆에 "대리 모델 진단" 칩을 반드시 붙인다.
-> BYOK 로 실제 모델을 진단한 경우에만 `false` 이고, 그때는 칩이 사라진다.
+> **① `scope_notice` 는 fidelity 와 무관하게 항상 표시한다.**
+> 우리가 진단하는 것은 **'시스템 지시문 + 모델' 조합**이지 배포된 챗봇 서비스가 아니다.
+> 앞단 입력 필터·RAG 문서·툴 호출·대화 이력·출력 후처리는 재현되지 않는다.
+> BYOK 라고 이 문장을 숨기면 "진짜 내 챗봇을 쟀다"는 오독이 그대로 남는다.
+>
+> **② `fidelity="proxy_model"` 이면 등급 배지 옆에 "대리 모델" 칩을 반드시 붙인다.**
+> 다른 모델의 결과를 자기 챗봇의 결과로 오독시키는 것은 `inconclusive` 를 "안전"으로 그리는 것과 같은 급의 사고다.
+>
+> **③ `real_service` 라는 값은 오지 않는다.** 배포 서비스 직접 진단은 SPEC §10 2순위이고 **구현이 없다.**
+> 스키마에 자리만 예약돼 있으며, 엔진이 이 값을 내지 않는 것을 테스트가 강제한다.
 
 ### `report` 필드 의미 (status=done)
 
@@ -147,7 +158,7 @@
 { "runs": [
     { "run_id": "run_20260824_153000_ab12", "created_at": "2026-08-24T15:30:00+09:00",
       "status": "done", "grade": "C", "asr_before": 0.56, "asr_after": 0.12, "persona": "한비",
-      "target_model": "qwen2.5:3b-instruct", "is_approximation": true }
+      "target_model": "qwen2.5:3b-instruct", "fidelity": "proxy_model" }
 ] }
 ```
 - 이력 목록에도 `target_model` 이 온다. **모델이 다르면 등급을 나란히 비교하면 안 되므로** 목록 행에 모델명을 같이 찍는다.
@@ -168,11 +179,11 @@
   "presets": [
     { "id": "local_qwen3b", "label": "qwen2.5:3b (로컬 대리 모델)",
       "backend": "local", "requires_key": false, "verified": true,
-      "is_approximation": true,
+      "fidelity": "proxy_model",
       "note": "기본값. 저가 모델을 쓰는 실제 챗봇 환경을 재현한다. 키가 필요 없다." },
     { "id": "byok", "label": "내 API 키로 실제 모델 진단",
       "backend": "openai_compat", "requires_key": true, "verified": true,
-      "is_approximation": false,
+      "fidelity": "real_model",
       "note": "OpenAI 호환 엔드포인트만 지원. base_url·model·api_key 를 직접 입력한다." }
   ] }
 ```
@@ -181,7 +192,7 @@
 |---|---|
 | `requires_key` | `true` 면 키 입력란과 "저장되지 않습니다" 문구를 편다 |
 | `verified` | 우리가 실제로 돌려보고 확인한 조합인가. `false` 면 "실험적" 배지 |
-| `is_approximation` | 이 프리셋을 고르면 결과에 "대리 모델 진단" 칩이 붙는다는 예고 |
+| `fidelity` | `proxy_model` 이면 결과에 "대리 모델" 칩이 붙는다는 예고 |
 
 > **지원 범위는 OpenAI 호환(`/v1/chat/completions`) 엔드포인트뿐이다.** Ollama·OpenAI·대부분의 국내 API 가 이 규격을 준다.
 > 벤더 전용 네이티브 API(예: Anthropic Messages API)는 이번 범위 밖 — 프리셋 목록에 넣지 않는다.
@@ -194,7 +205,8 @@
 - **결과 화면의 주인공은 `asr_delta`(개선폭)와 Before/After 막대다.** garak 은 진단만 하니 우리 화면의 차별점.
 - `status=inconclusive` 전용 화면을 반드시 따로 그린다 — 여기서 "안전"으로 착각하게 만들면 보안 도구로서 실격.
 - **(v0.2) 입력 화면에 모델 선택 드롭다운 + 조건부 키 입력란.** 목록은 `GET /api/models` 에서 받아 그린다.
-- **(v0.2) 등급·ASR 이 보이는 모든 자리에 `target.model` 을 같이 표시.** `is_approximation=true` 면 "대리 모델 진단" 칩.
+- **(v0.3) 등급·ASR 이 보이는 모든 자리에 `target.model` 을 같이 표시.** `fidelity="proxy_model"` 이면 "대리 모델" 칩.
+- **(v0.3) `target.scope_notice` 는 결과 화면에 항상 한 줄 노출.** BYOK 여도 숨기지 않는다.
 - **(v0.2) 진단 시작 버튼 옆에 `estimated_calls` 고지.** BYOK 면 사용자 요금이 나간다.
 - `comparable=false` 경고 배지 자리 하나.
 - `patched_prompt` 복사 버튼.

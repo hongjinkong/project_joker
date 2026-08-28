@@ -36,7 +36,8 @@ def _cmd_doctor(_args) -> int:
     for role in ("victim", "recon", "judge"):
         base, key = s.endpoint_for(role)
         print(f"[INFO] {role:6} → {base} · key={mask_secret(key)}")
-    print(f"[INFO] target_preset={s.target_preset} · 근사치 여부={s.is_approximation}")
+    print(f"[INFO] target_preset={s.target_preset} · "
+          f"fidelity={'proxy_model' if s.is_proxy_model else 'real_model'}")
     if all(b == "mock" for b in (s.backend_for('victim'), s.backend_for('recon'), s.backend_for('judge'))):
         print("[WARN] 전부 mock 이라 실제 모델을 호출하지 않습니다. 실측하려면 JOKER_PROFILE=local")
     return 0 if ok else 1
@@ -143,7 +144,7 @@ def _cmd_diagnose(args) -> int:
         settings = settings.with_(**over)
         print(f"[INFO] 진단 대상: {settings.victim_model} "
               f"(backend={settings.backend_for('victim')}, preset={settings.target_preset}, "
-              f"근사치={settings.is_approximation})")
+              f"fidelity={'proxy_model' if settings.is_proxy_model else 'real_model'})")
 
     data_dir = Path(args.data_dir)
     attacks = load_default_corpus(str(data_dir), run_audit=False)
@@ -158,6 +159,14 @@ def _cmd_diagnose(args) -> int:
         patterns=tuple(patterns),
     )
 
+    # ★ 시작 전 호출 수 고지(계약 v0.2 estimated_calls). BYOK 면 이 요금이 사용자 카드로 나간다.
+    from joker.providers.usage import collect, estimate_calls
+    est = estimate_calls(len(attacks), full=settings.full_sweep)
+    _rng = (f"{est['victim_min']}" if est['victim_min'] == est['victim_max']
+            else f"{est['victim_min']}~{est['victim_max']}")
+    print(f"[예상] 대상 모델 호출 {_rng}회 + 정찰 {est['recon']}회 "
+          f"(총 {est['total_min']}~{est['total_max']}회) — {est['note']}")
+
     run_id = getattr(args, "run_id", None) or f"run_{datetime.datetime.now():%Y%m%d_%H%M%S}"
     state = run_pipeline(prompt, deps, run_id=run_id)
     # 재현 맥락 3종(SPEC §4). 이게 없으면 나중에 이 수치를 다시 만들 수 없다.
@@ -166,15 +175,31 @@ def _cmd_diagnose(args) -> int:
     state["victim_model"] = settings.victim_model
     r = state["report"]
     print("─" * 48)
+    def _print_usage() -> None:
+        # ★ BudgetProvider 가 세고 있던 값을 처음으로 읽는 곳(2026-08-27 이전엔 읽는 코드가 0건).
+        usage = collect(providers)
+        for line in usage.lines():
+            print(f"[사용] {line}")
+        if usage.has_unpriced_paid_calls:
+            print("[사용] ⚠ 단가 미등록 유료 모델이 있다 — 비용은 0 이 아니다(providers/usage.py)")
+        elif usage.total_cost_usd:
+            print(f"[사용] 추정 비용 ${usage.total_cost_usd:.4f} "
+                  "(벤더 단가는 바뀐다 — 실제 청구액과 다를 수 있음)")
+
     if r.inconclusive:
         print(f"[결과] 진단 불가(inconclusive)\n  {state.get('recon_reason')}")
+        _print_usage()
         return 0
     grade = r.grade.value if r.grade else "N/A"
     t = state.get("target")
     if t:
         # 등급만 찍고 모델을 안 찍으면 다른 대상의 결과로 오독된다(계약 v0.2)
-        chip = " · ⚠ 대리 모델 진단(실제 모델 결과는 다를 수 있음)" if t.is_approximation else ""
+        chip = " · ⚠ 대리 모델" if t.is_proxy_model else ""
         print(f"[대상] {t.model} (backend={t.backend}, temp={t.temperature}, seed={t.seed}){chip}")
+        # ★ 범위 고지는 fidelity 와 무관하게 항상 찍는다. BYOK 라고 '진짜 챗봇을 쟀다' 가 아니다.
+        print(f"[범위] {t.scope_notice}")
+        if t.model_notice:
+            print(f"[주의] {t.model_notice}")
     print(f"[결과] 등급 {grade} · comparable={r.comparable}")
     print(f"  ASR  처방 전 {r.asr_before:.0%} → 처방 후 {r.asr_after:.0%}   (개선 {r.delta:+.0%})")
     print(f"  취약 기법: {', '.join(t.value for t in state['vulnerable_techniques']) or '없음'}")
@@ -182,6 +207,7 @@ def _cmd_diagnose(args) -> int:
     print("  기법별 (before → after):")
     for tech, v in r.by_technique.items():
         print(f"    {tech:13s} {v['before']:5.0%} → {v['after']:5.0%}  (n={v['total']})")
+    _print_usage()
 
     if getattr(args, "save", False):
         from joker.store.sqlite import Repository
@@ -337,7 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
     diag_p.add_argument("--victim-base-url", default=None,
                         help="대상 모델 엔드포인트(OpenAI 호환). BYOK 진단용")
     diag_p.add_argument("--target-preset", default=None,
-                        help="프리셋 id. 'byok' 로 주면 리포트의 is_approximation 이 False 가 된다")
+                        help="프리셋 id. 'byok' 로 주면 fidelity 가 real_model 이 된다(서비스 진단은 아니다)")
     diag_p.set_defaults(func=_cmd_diagnose)
     audit_p = sub.add_parser("audit", help="공격 시드 YAML 검증")
     audit_p.add_argument("--data-dir", default="data/attacks", help="공격 YAML 폴더")

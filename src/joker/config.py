@@ -175,29 +175,36 @@ class Settings:
                 "judge": self.judge_model}.get(role, self.victim_model)
 
     @property
-    def is_approximation(self) -> bool:
-        """사용자의 실제 모델이 아니라 우리 대리 모델로 진단했는가.
-
-        byok = 사용자가 자기 base_url/model/key 를 준 경우 → 진짜 그 모델을 쟀으니 False.
-        """
+    def is_proxy_model(self) -> bool:
+        """대리 모델로 쟀는가. byok = 사용자가 자기 base_url/model/key 를 준 경우 → False."""
         return self.target_preset != "byok"
 
-    def target_info(self):
-        """리포트에 실을 '무엇을 진단했는가'. contracts v0.2 의 target 블록."""
-        from joker.models import TargetInfo  # 지연 import (config 는 최하위층)
+    # 하위호환. ★ 새 코드는 fidelity 를 봐라 — 이 이름이 "근사냐 아니냐" 로 읽혀서 BYOK 를
+    #   '실제 챗봇 진단' 으로 오독시켰다(2026-08-27). 곧 제거한다.
+    is_approximation = is_proxy_model
 
-        notice = None
-        if self.is_approximation:
-            notice = (f"고객님 챗봇의 실제 모델이 아니라 대리 모델({self.victim_model})로 "
-                      "진단했습니다. 실제 모델의 결과는 다를 수 있습니다.")
+    def target_info(self):
+        """리포트에 실을 '무엇을 진단했는가'. contracts 의 target 블록.
+
+        ★ fidelity 는 PROXY_MODEL / REAL_MODEL 두 값만 낸다.
+          REAL_SERVICE(배포 서비스 직접 진단)는 SPEC §10 2순위이고 **구현이 없다.**
+          코드가 낼 수 없는 값을 리포트가 주장하면 그건 거짓말이다.
+        """
+        from joker.models import SCOPE_NOTICE, Fidelity, TargetInfo  # 지연 import (config 는 최하위층)
+
+        proxy = self.is_proxy_model
         return TargetInfo(
             model=self.victim_model,
             backend=self.backend_for("victim"),
             preset=self.target_preset,
             temperature=self.temperature,
             seed=self.seed,
-            is_approximation=self.is_approximation,
-            approximation_notice=notice,
+            fidelity=Fidelity.PROXY_MODEL if proxy else Fidelity.REAL_MODEL,
+            scope_notice=SCOPE_NOTICE,      # 항상 붙는다
+            model_notice=(
+                f"고객님 챗봇의 실제 모델이 아니라 대리 모델({self.victim_model})로 진단했습니다. "
+                "실제 모델에서는 결과가 다를 수 있습니다." if proxy else None
+            ),
         )
 
     def __repr__(self) -> str:  # 키를 절대 노출하지 않는다
