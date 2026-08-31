@@ -163,12 +163,15 @@ class Repository:
                 "SELECT * FROM tb_attempt WHERE run_id = ? ORDER BY attempt_id", (run_id,))]
             assets = [dict(r) for r in con.execute(
                 "SELECT * FROM tb_asset WHERE run_id = ?", (run_id,))]
+            patterns = [r[0] for r in con.execute(
+                "SELECT pattern_id FROM tb_applied_pattern WHERE run_id = ? ORDER BY id", (run_id,))]
         finally:
             con.close()
 
         d = dict(head)
         d["attempts"] = attempts
         d["assets"] = assets
+        d["applied_patterns"] = patterns
         return d
 
     def list_runs(self) -> list[dict]:

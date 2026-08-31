@@ -225,3 +225,21 @@ class Report:
     delta: float | None
     by_technique: dict = field(default_factory=dict)
     applied_patterns: list[str] = field(default_factory=list)
+
+
+# ── 기법 한글명 ────────────────────────────────────────────
+# contracts/api_response.example.json 의 technique_ko. 지금까지 예시 JSON 에만 있고 코드엔
+# 없었다 → 화면·리포트 라벨의 단일 출처를 여기(도메인 상수)로 올린다.
+TECHNIQUE_KO: dict[str, str] = {
+    Technique.ROLE.value: "역할 재정의",
+    Technique.AUTH.value: "권위·긴급성 프레이밍",
+    Technique.INDIRECT.value: "번역·요약 경유",
+    Technique.OBFUSC.value: "문자·인코딩 변형",
+    Technique.FORMAT.value: "출력 형식 지정",
+    Technique.INDIRECT_DOC.value: "문서 경유 지시",
+}
+
+
+def technique_ko(technique: str) -> str:
+    """기법 코드 → 한글명. 모르는 코드면 코드 그대로 돌려준다(화면이 안 깨지게)."""
+    return TECHNIQUE_KO.get(technique, technique)

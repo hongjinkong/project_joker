@@ -30,11 +30,11 @@
 ```bash
 cd model
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"        # joker 패키지 + pytest 설치
+pip install -e ".[dev,web]"    # joker + pytest + 웹(FastAPI·Streamlit)
 cp .env.example .env           # 접속 정보 (mock 이면 그대로 둬도 됨)
 
 joker doctor                   # ① 환경 점검 — 뭐가 빠졌는지 한 화면에
-pytest                         # ② 테스트 52개 (전부 초록이면 정상)
+pytest                         # ② 테스트 (전부 초록이면 정상 · API 레이어 포함)
 joker diagnose                 # ③ 진단 데모 1회 (mock — 가짜 시나리오로 흐름만 보여줌)
 ```
 
@@ -75,19 +75,52 @@ joker gold f1                 # ④ CSV라벨 / 심판 / 심판+재정 세 기�
 
 ---
 
+## 🌐 웹으로 돌려보기 (API + 화면)
+
+지시문을 붙여넣으면 → 진단 → 처방 → 재진단을 **브라우저에서** 보여줍니다. 터미널 2개를 씁니다.
+
+```bash
+pip install -e ".[web]"        # FastAPI · uvicorn · Streamlit · httpx
+
+# 1번 터미널 — API 서버 (데모: mock / 실측: local)
+JOKER_PROFILE=mock uvicorn "joker.api.app:create_app" --factory --port 8000
+
+# 2번 터미널 — 화면
+streamlit run ui/streamlit_app.py
+```
+
+- `mock` 이면 Ollama 없이도 고정 데모로 완주합니다(발표 백업 경로). 실제 진단은 `JOKER_PROFILE=local`(Ollama 필요).
+- 진단은 3~4분 걸립니다 → API 는 시작하자마자 `run_id` 를 주고(202), 화면이 폴링해 완료되면 결과를 그립니다.
+
+### 엔드포인트 (계약: `contracts/api_contract.md` v0.3)
+
+| 메서드 · 경로 | 하는 일 |
+|---|---|
+| `POST /api/diagnose` | 지시문 + 대상 모델 → 진단 시작, `run_id` 반환 |
+| `GET /api/runs/{id}` | 진단 결과 (진행 중 / 완료 / 진단불가 / 오류) |
+| `GET /api/runs` | 진단 이력 목록 |
+| `GET /api/models` | 선택 가능한 진단 대상 모델(드롭다운) |
+| `GET /api/health` | 엔진·프로바이더 상태 |
+
+- **화면(`ui/`)은 `joker` 를 import 하지 않고 HTTP 로만 API 를 부릅니다** — 엔진을 몰라도 화면 작업이 됩니다(`test_import_boundaries` 가 강제).
+- **개인정보(정보보안 담당 구역):** 응답의 `response_excerpt` 는 비밀값이 지워진 채로 옵니다(저장 전 마스킹 — 리터럴 + 조각 유출까지). BYOK API 키는 저장·로그·응답 어디에도 남지 않습니다.
+- **함정② 그대로:** 보호할 값이 없는 지시문은 `inconclusive` 로 오고, 화면은 등급·ASR 을 절대 표시하지 않습니다.
+
+---
+
 ## ✅ 지금 상태 (2026-08-25)
 
-**엔진은 완성됐습니다.** 스텁 없음, 테스트 52개 전부 초록, 실제 모델로 첫 실측까지 확보.
+**엔진 + 웹 레이어 완성.** 스텁 없음, 테스트 전부 초록(API 레이어 포함), 실제 모델로 진단→처방→재진단 실측 확보.
 
 | 부분 | 상태 |
 |---|---|
 | 엔진 7단계(정찰→공격→판정→처방→재진단→리포트) + 자동 변형 8종 | ✅ 완성 |
-| 테스트 52개 (함정 6개 + 경계 · 계약 포함) | ✅ 전부 초록 |
+| 테스트 (함정 6개 + 경계 · 계약 + API 레이어) | ✅ 전부 초록 |
 | 공격 시드 **38개** (검증 완료) + 자동 변형으로 실질 342개 | ✅ |
 | SQLite 저장 + PoC 125건 적재 | ✅ |
 | 혼합 배치(victim=로컬 / recon·judge=상용 API) 배선 | ✅ (키만 넣으면 동작) |
 | 처방 전/후 ASR · 독립 F1 | ⏳ 유료 API 키 도착 후 |
-| FastAPI + Streamlit UI | ⏳ 다음 주 |
+| FastAPI + Streamlit UI | ✅ 완성 (08-31) |
 
 ### 실측 결과 (발표 근거)
 
@@ -117,9 +150,10 @@ src/joker/     엔진. config/models/state = 모든 상태의 단일 정의처
   ├ detect/     규칙 판정 (정규화 · 유출 채널)
   ├ nodes/      recon/attack/judge/patch/report — 순수 함수 f(state, deps)
   ├ pipeline.py (순차 실행)   graph.py (LangGraph 배선)
-  └ store/      schema.sql(9/2 DB 문서 원본) · sqlite · import_poc
+  ├ store/      schema.sql(9/2 DB 문서 원본) · sqlite · import_poc
+  └ api/        FastAPI 앱(app.py) + 직렬화·프리셋·잡큐 — 계약 v0.3 구현
 contracts/     API 응답 계약 — 코드보다 먼저 고정. 8/31 화면설계서 입력
-ui/            streamlit_app.py (데모 화면, 작업 중)
+ui/            streamlit_app.py (진단 화면 — HTTP 로만 API 호출, joker import 없음)
 tests/         함정 6개(trap01~06) + 경계·계약 테스트
 ```
 
