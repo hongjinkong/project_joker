@@ -360,6 +360,8 @@ def _cmd_detect(args) -> int:
         return 1
     verdict = "INJECTION (공격 의심)" if r.is_injection else "SAFE (정상)"
     print(f"[탐지] {verdict} · 공격확률 {r.score:.3f} (threshold {r.threshold})")
+    if r.rule_flags:
+        print(f"[규칙] 난독화 신호: {', '.join(r.rule_flags)} (ML 이 놓쳐도 규칙이 잡음)")
     print(f"[INFO] model={Path(r.model).name}")
     return 0
 

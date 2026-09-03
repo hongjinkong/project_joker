@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
+from joker.detect_ko_rules import obfuscation_flags
+
 # 엔진 패키지 루트(src/joker/detect_ko.py) → repo 루트(model/)는 parents[2].
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MODEL_PATH = _REPO_ROOT / "detector" / "artifacts" / "joker-ko"
@@ -37,6 +39,7 @@ class Detection:
     threshold: float
     is_injection: bool
     model: str          # 사용한 모델 경로(문자열)
+    rule_flags: tuple[str, ...] = ()   # 규칙(난독화)이 잡은 사유. ML 과 별개 근거
 
 
 def _positive_index(id2label: dict) -> int:
@@ -66,6 +69,7 @@ class KoDetector:
         threshold: float = 0.5,
         predict_fn: Callable[[list[str]], Sequence[float]] | None = None,
         max_len: int = 512,
+        use_rules: bool = True,
     ) -> None:
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("threshold 는 0.0~1.0 이어야 한다")
@@ -75,6 +79,7 @@ class KoDetector:
         self.threshold = float(threshold)
         self.max_len = int(max_len)
         self._predict_fn = predict_fn
+        self.use_rules = bool(use_rules)  # 난독화 규칙 2중 방어
         # transformers 백엔드 캐시(한 번만 로드)
         self._model = None
         self._tok = None
@@ -116,11 +121,12 @@ class KoDetector:
     # ── 내부 ────────────────────────────────────────────────
     def _make(self, text: str, score: float) -> Detection:
         s = float(score)
-        is_inj = s >= self.threshold
+        flags = obfuscation_flags(text) if self.use_rules else ()
+        is_inj = (s >= self.threshold) or bool(flags)   # ML 또는 규칙 중 하나라도 = 공격(2중 방어)
         return Detection(
             label="INJECTION" if is_inj else "SAFE",
             score=s, threshold=self.threshold, is_injection=is_inj,
-            model=str(self.model_path),
+            model=str(self.model_path), rule_flags=flags,
         )
 
     def _default_predict(self, texts: list[str]) -> list[float]:
@@ -169,4 +175,5 @@ def detect_payload(detector: KoDetector, text) -> dict:
         "is_injection": d.is_injection,
         "threshold": d.threshold,
         "model": Path(d.model).name,
+        "rule_flags": list(d.rule_flags),
     }
