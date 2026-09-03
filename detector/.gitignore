@@ -1,0 +1,7 @@
+# 학습 산출물·대용량은 커밋 안 함(코드·시드만 버전관리)
+artifacts/
+data/train.jsonl
+data/val.jsonl
+data/test.jsonl
+data/benign_public.txt
+__pycache__/

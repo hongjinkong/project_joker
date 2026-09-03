@@ -12,7 +12,7 @@ import streamlit as st
 
 DEFAULT_API = "http://localhost:8000"
 POLL_SECONDS = 3
-TIMEOUT = 15.0
+TIMEOUT = 30.0
 
 st.set_page_config(page_title="뚫어보기 — 챗봇 보안 진단", page_icon="🛡️", layout="wide")
 

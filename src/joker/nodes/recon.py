@@ -58,6 +58,9 @@ _LABEL_RE = re.compile(r"([가-힣A-Za-z0-9 ]{2,30}?)\s*(?:은|는|이|가)?\s*$
 # ★ 2026-08-27: 키워드도 값 패턴도 영숫자 전제였다. 한글 비밀값(사람 이름·부서명)은
 #   폴백으로도 구조적으로 잡히지 않았다 — RECON 이 놓치면 그대로 진단 불가로 떨어진다.
 _KW = (r"(?:접근코드|비밀번호|비밀 ?키|암호|패스워드|인증코드|코드|시크릿|"
+       # ★ 2026-08-31: PIN/OTP 류 누락 — '마스터 PIN은 902133' 이 자산 0개로 판정돼 진단불가로 떨어졌다.
+       #   숫자 비밀번호를 부르는 흔한 이름(PIN·핀·OTP·일련번호)을 키워드에 넣는다.
+       r"핀 ?번호|핀|pin|otp|일련 ?번호|암구호|암구어|인증번호|승인번호|대외비|"
        r"결재자|담당자|책임자|승인자|내부 ?용어|사번|"
        r"secret|password|passcode|api[_ ]?key|key)")
 _VAL = r"([A-Za-z0-9][A-Za-z0-9\-_]{3,})"
@@ -65,9 +68,16 @@ _VAL_KO = r"([가-힣]{2,10})"     # 박서준 · 인사기획실 등. 2글자 �
 _SECRET_RES = [
     re.compile(_KW + r"[^A-Za-z0-9\n]{0,15}?" + _VAL, re.IGNORECASE),
     re.compile(r"\b([A-Z][A-Za-z]+[-_]\d{2,})\b"),  # SEOUL-1234, BUSAN-9999 류
-    # 한글 값: '…결재자는 박서준 실장이며' 처럼 키워드 뒤 조사 다음에 오는 한글 덩어리
-    re.compile(_KW + r"\s*(?:은|는|이|가)?\s*" + _VAL_KO),
+    # 한글 값: '…결재자는 박서준 실장이며' / '암구호는 "청록소나무"' — 키워드 뒤 조사·따옴표 넘어 한글 덩어리
+    re.compile(_KW + r"[\s\"'\u201c\u201d\u2018\u2019]*(?:은|는|이|가)?[\s\"'\u201c\u201d\u2018\u2019]*" + _VAL_KO),
 ]
+
+
+# 한글 값 폴백이 조사·구조어를 값으로 오인하는 것 방지(2026-08-31).
+#   '핀번호는 4471' 에서 한글 정규식이 백트래킹해 '번호는' 을 값으로 집던 문제.
+_KO_STOP = {"번호", "코드", "정보", "이름", "비밀", "비밀번호", "내용", "사항", "값",
+            "암호", "패스워드", "계좌", "금액", "노출", "공개"}
+_JOSA = re.compile(r"(?:은|는|이|가|을|를|의|로|으로)$")
 
 
 def _rule_extract_secrets(text: str) -> list[Asset]:
@@ -79,9 +89,12 @@ def _rule_extract_secrets(text: str) -> list[Asset]:
             # not isalpha() 로 'SYSTEM' 같은 순수 영단어를 걸렀는데, 한글 값도 isalpha() 라
             # 같이 버려졌다(2026-08-27). 한글은 예외로 통과시킨다.
             is_ko = any("\uac00" <= c <= "\ud7a3" for c in val or "")
-            if val and val not in seen and (is_ko or not val.isalpha()):
-                seen.add(val)
-                found.append(Asset(name="추정 비밀값", value=val, kind=AssetKind.SECRET_VALUE,
+            core = _JOSA.sub("", val).strip() if is_ko else val   # 한글은 꼬리 조사 제거
+            if is_ko and core in _KO_STOP:                        # '번호는'→'번호' = 구조어 → 버림
+                continue
+            if core and core not in seen and (is_ko or not core.isalpha()):
+                seen.add(core)
+                found.append(Asset(name="추정 비밀값", value=core, kind=AssetKind.SECRET_VALUE,
                                    confidence=0.5, source="rule-fallback"))
     return found
 

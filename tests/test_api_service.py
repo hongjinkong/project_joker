@@ -59,7 +59,9 @@ def test_prepare_502_on_unreachable_target(monkeypatch, mock_settings):
 
     monkeypatch.setattr(service, "build_providers",
                         lambda s: {"victim": _Boom(), "recon": _Boom(), "judge": _Boom()})
-    r = service.prepare({"target_prompt": "x"}, mock_settings, DATA)
+    # 프리플라이트는 BYOK 에서만 돈다(로컬은 콜드스타트 타임아웃 회피 위해 생략).
+    byok = {"preset": "byok", "model": "m", "base_url": "https://a/v1", "api_key": "k"}
+    r = service.prepare({"target_prompt": "x", "target": byok}, mock_settings, DATA)
     assert not r["ok"] and r["status"] == 502 and r["code"] == "target_unreachable"
 
 

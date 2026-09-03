@@ -48,15 +48,19 @@ def prepare(body: dict, base_settings, data_dir: str) -> dict:
     patterns = load_patterns(dd.parent / "defenses" / "patterns.yaml")
     providers = build_providers(settings)
 
-    # 프리플라이트 1콜 — 대상 모델이 실제로 응답하는지 확인. 실패 시 즉시 502.
-    try:
-        providers["victim"].complete(
-            system="ping", user="ping",
-            temperature=settings.temperature, seed=settings.seed,
-        )
-    except ProviderError:
-        return _err(502, "target_unreachable",
-                    "대상 모델 연결에 실패했습니다. base_url·api_key·모델명을 확인하세요.")
+    # 프리플라이트 1콜 — BYOK 만. 잘못된 키·엔드포인트로 3~4분·요금을 날리기 전에 즉시 502.
+    #   로컬 모델은 콜드 스타트(모델 로딩)가 길어 POST 를 붙잡으면 클라이언트가 타임아웃 난다
+    #   (gemma3:4b 첫 호출 15초+). 로컬은 프리플라이트를 생략하고, 연결 실패는 백그라운드 워커가
+    #   error(target_unreachable)로 돌려준다 — 요금이 없으니 미리 막을 이유도 없다.
+    if settings.target_preset == "byok":
+        try:
+            providers["victim"].complete(
+                system="ping", user="ping",
+                temperature=settings.temperature, seed=settings.seed,
+            )
+        except ProviderError:
+            return _err(502, "target_unreachable",
+                        "대상 모델 연결에 실패했습니다. base_url·api_key·모델명을 확인하세요.")
 
     est = estimate_calls(len(attacks), full=settings.full_sweep)
     run_id = f"run_{datetime.datetime.now():%Y%m%d_%H%M%S}_{secrets.token_hex(2)}"

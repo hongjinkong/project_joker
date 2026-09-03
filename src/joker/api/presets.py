@@ -25,6 +25,17 @@ PRESETS: list[dict] = [
         "_victim_model": "qwen2.5:3b-instruct",
     },
     {
+        "id": "local_gemma4b",
+        "label": "gemma3:4b (로컬 대리 모델)",
+        "backend": "local",
+        "requires_key": False,
+        "verified": True,
+        "fidelity": "proxy_model",
+        "note": "또 다른 저가 로컬 모델. 같은 지시문·공격이라도 처방 후 결과가 qwen 과 다르다 — '모델 선택도 보안 결정'(발표 포인트).",
+        "_victim_backend": "local",
+        "_victim_model": "gemma3:4b",
+    },
+    {
         "id": "byok",
         "label": "내 API 키로 실제 모델 진단",
         "backend": "openai_compat",
