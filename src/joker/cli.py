@@ -40,6 +40,10 @@ def _cmd_doctor(_args) -> int:
           f"fidelity={'proxy_model' if s.is_proxy_model else 'real_model'}")
     if all(b == "mock" for b in (s.backend_for('victim'), s.backend_for('recon'), s.backend_for('judge'))):
         print("[WARN] 전부 mock 이라 실제 모델을 호출하지 않습니다. 실측하려면 JOKER_PROFILE=local")
+    from joker.detect_ko import KoDetector
+    _det = KoDetector()
+    print(f"[{'OK ' if _det.available() else 'WARN'}] JOKER-KO 탐지기 "
+          f"(모델 {_det.model_path.name} · torch/transformers) — 입력단 1차 필터")
     return 0 if ok else 1
 
 
@@ -341,6 +345,25 @@ def _cmd_gold_apply(args) -> int:
     return _cmd_gold_f1(args)
 
 
+def _cmd_detect(args) -> int:
+    """입력 문구가 한국어 프롬프트 인젝션인지 1차 탐지(JOKER-KO)."""
+    from joker.detect_ko import DetectorUnavailable, KoDetector
+
+    det = KoDetector(model_path=getattr(args, "model_path", None), threshold=args.threshold)
+    try:
+        r = det.classify(args.text)
+    except ValueError as e:
+        print(f"[FAIL] {e}")
+        return 1
+    except DetectorUnavailable as e:
+        print(f"[FAIL] 탐지기 사용 불가 — {e}")
+        return 1
+    verdict = "INJECTION (공격 의심)" if r.is_injection else "SAFE (정상)"
+    print(f"[탐지] {verdict} · 공격확률 {r.score:.3f} (threshold {r.threshold})")
+    print(f"[INFO] model={Path(r.model).name}")
+    return 0
+
+
 def _cmd_todo(_args) -> int:
     raise NotImplementedError("해당 단계에서 구현")
 
@@ -394,6 +417,11 @@ def build_parser() -> argparse.ArgumentParser:
     ga.add_argument("--csv", default="data/evidence/gold_disagreements.csv", help="재정한 CSV")
     ga.add_argument("--by", default="홍진성", help="재정자 이름(기록용)")
     ga.set_defaults(func=_cmd_gold_apply)
+    det_p = sub.add_parser("detect", help="입력 문구가 한국어 프롬프트 인젝션인지 1차 탐지(JOKER-KO)")
+    det_p.add_argument("text", help="분류할 입력 문구")
+    det_p.add_argument("--model-path", default=None, help="파인튜닝 모델 경로(기본: detector/artifacts/joker-ko)")
+    det_p.add_argument("--threshold", type=float, default=0.5, help="INJECTION 판정 문턱(기본 0.5)")
+    det_p.set_defaults(func=_cmd_detect)
     sub.add_parser("bench", help="실측 스크립트 실행").set_defaults(func=_cmd_todo)
     sub.add_parser("doctor", help="환경 상태 점검").set_defaults(func=_cmd_doctor)
     return p

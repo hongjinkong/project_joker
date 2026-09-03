@@ -26,6 +26,9 @@ def create_app():
     registry = JobRegistry()
     data_dir = "data/attacks"
 
+    from joker.detect_ko import KoDetector
+    detector = KoDetector()  # 모델은 첫 /api/detect 호출에서 lazy 로드(엔진 시작은 안 무겁게)
+
     # 코퍼스는 시작 시 1회 로드해 health 의 corpus_loaded 로 쓴다(진단마다 다시 읽는 건 prepare 담당).
     try:
         _corpus_n = len(load_default_corpus(data_dir, run_audit=False))
@@ -86,12 +89,31 @@ def create_app():
     def models():
         return presets.list_models()
 
+    @app.post("/api/detect")
+    async def detect(req: Request):
+        """입력 문구 1건 → JOKER-KO 공격 탐지. 원문은 응답에 안 담는다(비밀값 유출 방지)."""
+        from joker.detect_ko import DetectorUnavailable, detect_payload
+        try:
+            body = await req.json()
+        except Exception:  # noqa: BLE001
+            return JSONResponse(status_code=400,
+                                content={"error": {"code": "bad_json", "message": "요청 본문이 JSON 이 아닙니다."}})
+        try:
+            return detect_payload(detector, (body or {}).get("text"))
+        except ValueError as e:
+            return JSONResponse(status_code=400,
+                                content={"error": {"code": "text_required", "message": str(e)}})
+        except DetectorUnavailable as e:
+            return JSONResponse(status_code=503,
+                                content={"error": {"code": "detector_unavailable", "message": str(e)}})
+
     @app.get("/api/health")
     def health():
         lg = importlib.util.find_spec("langgraph") is not None
         return {
             "status": "ok", "profile": settings.profile.value, "langgraph": lg,
             "corpus_loaded": _corpus_n, "default_preset": presets.DEFAULT_PRESET,
+            "detector_ready": detector.available(),
         }
 
     return app

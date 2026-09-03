@@ -18,6 +18,8 @@ dependencies = [
 [project.optional-dependencies]
 # 화면(FastAPI/Streamlit)은 다음 주 구현. 계약 문서(contracts/)는 이번 주 확정.
 web = ["fastapi>=0.110", "uvicorn>=0.29", "streamlit>=1.30", "httpx>=0.27"]
+# 탐지 레이어(JOKER-KO) 추론용. 학습(datasets·sklearn)은 detector/requirements.txt 별도.
+detect = ["torch>=2.2", "transformers>=4.46,<5", "sentencepiece>=0.1.99", "protobuf>=3.20"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
