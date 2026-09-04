@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from joker.models import SCOPE_NOTICE, technique_ko
+from joker.nodes.report import filter_recommendation
 from joker.safety.masking import mask_secrets
 
 _EXCERPT_LIMIT = 240
@@ -123,6 +124,10 @@ def serialize_run(run: dict) -> dict:
         "asr_delta": head.get("asr_delta"),
         "by_technique": _by_technique_array(attempts),
         "applied_patterns": run.get("applied_patterns", []),
+        # 처방 ② 입력단 필터 권고 — 건수·사유만 담는다(공격문 원문은 안 담는다).
+        "filter_recommendation": filter_recommendation(
+            [a.get("rendered_text") or "" for a in attempts
+             if a.get("round_no") == 2 and a.get("verdict") == "leak"]),
         "patched_prompt": head.get("patched_prompt"),   # ★ 마스킹 안 함(위 docstring)
         "attempts": [_attempt(a) for a in attempts],
     }

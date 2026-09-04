@@ -132,6 +132,7 @@
 | `asr_delta` | `float` | `before - after`. 양수면 개선. 큰 숫자 강조(핵심 지표) |
 | `by_technique[]` | 배열 | 기법별 막대그래프. `{technique, ko, before, after, total}` |
 | `applied_patterns[]` | `string[]` | 적용된 방어 패턴 ID(P01..). 툴팁에 이름·근거 |
+| `filter_recommendation` | `object` | 처방 ②(입력단 JOKER-KO 배치) 권고. `{residual, rule_blockable, flags{사유:건수}, note, basis}`. **규칙 층만으로 계산한 하한값**(`basis="rule_layer_only"`) — ML 층은 더 잡는다. 공격문 원문은 담지 않는다(건수·사유만) |
 | `patched_prompt` | `string` | 처방된 지시문 전문. **복사 버튼** 필수 |
 | `attempts[]` | 배열 | 시도별 상세(아래) |
 

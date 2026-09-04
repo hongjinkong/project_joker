@@ -225,6 +225,8 @@ class Report:
     delta: float | None
     by_technique: dict = field(default_factory=dict)
     applied_patterns: list[str] = field(default_factory=list)
+    # 처방 ②(입력단 필터) 권고. REPORT 가 채운다 — 처방문(patch)과 무관하므로 ASR 에 영향 없다.
+    filter_recommendation: dict = field(default_factory=dict)
 
 
 # ── 기법 한글명 ────────────────────────────────────────────

@@ -132,6 +132,17 @@ def render_done(run: dict):
     if rep.get("applied_patterns"):
         st.caption("적용된 방어 패턴: " + ", ".join(rep["applied_patterns"]))
 
+    # ── 처방은 두 개다: ① 지시문 보강 ② 입력단 필터 ──────────────
+    fr = rep.get("filter_recommendation") or {}
+    if fr.get("note"):
+        st.subheader("처방")
+        st.markdown("**① 지시문 보강** — 아래 처방문으로 교체하세요.")
+        st.markdown(f"**② 입력단 JOKER-KO 탐지기 배치** — {fr['note']}")
+        if fr.get("flags"):
+            st.caption("규칙이 잡는 사유: "
+                       + ", ".join(f"{k} {v}건" for k, v in fr["flags"].items())
+                       + " · 규칙 층 기준이라 실제 차단량은 이보다 많습니다(ML 층 미포함).")
+
     # 처방된 지시문 (복사 버튼은 st.code 우측 상단에 기본 제공)
     st.subheader("처방된 지시문")
     st.caption("이 지시문으로 교체하면 위 '처방 후' 수준으로 방어력이 올라갑니다. 우측 상단 아이콘으로 복사하세요.")
