@@ -50,12 +50,27 @@ def predict(model_id, texts, max_len, pos_override):
     return preds, probs
 
 
+def _binary_metrics(y_true, y_pred):
+    """이진 분류 지표를 직접 계산한다(양성=1).
+
+    왜 직접 하나: sklearn 은 학습 환경(detector/requirements.txt)에만 있는 의존성이라
+    추론만 하는 PC 에서는 평가가 ImportError 로 죽었다. 공식은 sklearn 의
+    precision_recall_fscore_support(average="binary", zero_division=0) 와 동일하다 —
+    지금까지 보고한 F1(0.981 등)과 같은 값이 나온다.
+    """
+    tp = sum(1 for t, p in zip(y_true, y_pred) if t == 1 and p == 1)
+    fp = sum(1 for t, p in zip(y_true, y_pred) if t == 0 and p == 1)
+    fn = sum(1 for t, p in zip(y_true, y_pred) if t == 1 and p == 0)
+    tn = sum(1 for t, p in zip(y_true, y_pred) if t == 0 and p == 0)
+    prec = tp / (tp + fp) if (tp + fp) else 0.0
+    rec = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+    acc = (tp + tn) / len(y_true) if y_true else 0.0
+    return prec, rec, f1, acc, tn, fp, fn, tp
+
+
 def report(name, y_true, y_pred):
-    from sklearn.metrics import (accuracy_score, confusion_matrix,
-                                 precision_recall_fscore_support)
-    p, r, f, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
-    acc = accuracy_score(y_true, y_pred)
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    p, r, f, acc, tn, fp, fn, tp = _binary_metrics(y_true, y_pred)
     fpr = fp / (fp + tn) if (fp + tn) else 0.0
     fnr = fn / (fn + tp) if (fn + tp) else 0.0
     print(f"\n[{name}]  Acc {acc:.3f} · P {p:.3f} · R {r:.3f} · F1 {f:.3f}")
@@ -87,6 +102,27 @@ def diagnose(name, y, preds, probs, texts):
             print(f"     p={pr:.3f} | {t[:80]}")
 
 
+def _try_predict(model_id, texts, max_len, pos_override):
+    """모델 하나 실패로 평가 전체가 죽지 않게 한다.
+
+    Prompt Guard 2 는 gated repo 라 HF 토큰 없이는 401 이 난다(학원 PC 에서는 되던 것이 맥에서 안 됨).
+    baseline 을 못 불러도 **파인튜닝 모델 수치는 나와야** 한다 — 그게 이 스크립트의 주 목적이다.
+    """
+    try:
+        return predict(model_id, texts, max_len, pos_override)
+    except Exception as e:  # noqa: BLE001
+        msg = str(e)
+        print(f"  [건너뜀] {model_id} 를 불러오지 못했습니다: {type(e).__name__}")
+        if "gated" in msg or "401" in msg or "restricted" in msg:
+            print("     → 접근 제한 모델입니다. 아래 중 하나로 해결하세요:")
+            print("        1) https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M 에서 접근 승인")
+            print("        2) huggingface-cli login  (또는 export HF_TOKEN=hf_xxx)")
+            print("        3) --skip-baseline 으로 파인튜닝 모델만 평가")
+        elif "Connection" in msg or "Max retries" in msg or "Name or service" in msg:
+            print("     → 네트워크에서 모델을 못 받았습니다. 오프라인이면 --skip-baseline 을 쓰세요.")
+        return None, None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", default=DEFAULT_BASELINE)
@@ -95,23 +131,33 @@ def main(argv=None):
     ap.add_argument("--test", default=str(DATA / "test.jsonl"))
     ap.add_argument("--max-len", type=int, default=512)
     ap.add_argument("--baseline-pos-index", type=int, default=None)
+    ap.add_argument("--skip-baseline", action="store_true",
+                    help="baseline(게이트 모델) 평가를 건너뛴다 — 토큰 없거나 오프라인일 때")
     args = ap.parse_args(argv)
 
     rows = load_jsonl(args.test)
     texts = [r["text"] for r in rows]
     y = [int(r["label"]) for r in rows]
     print(f"[테스트] {len(rows)}행 (공격 {y.count(1)} · 정상 {y.count(0)})")
+    if y.count(0) == 0:
+        print("[주의] 정상(label=0) 표본이 0 입니다 — 정밀도·FPR 은 의미가 없고 "
+              "Recall/FNR 만 읽으세요(OOD 세트가 그렇습니다).")
 
     results = []
-    print("\n=== baseline: 파인튜닝 전 원본 ===")
-    b_pred, b_prob = predict(args.baseline, texts, args.max_len, args.baseline_pos_index)
-    results.append(report("baseline(원본)", y, b_pred))
-    diagnose("baseline(원본)", y, b_pred, b_prob, texts)
+    if args.skip_baseline:
+        print("\n[건너뜀] baseline 평가 생략(--skip-baseline)")
+    else:
+        print("\n=== baseline: 파인튜닝 전 원본 ===")
+        b_pred, b_prob = _try_predict(args.baseline, texts, args.max_len, args.baseline_pos_index)
+        if b_pred is not None:
+            results.append(report("baseline(원본)", y, b_pred))
+            diagnose("baseline(원본)", y, b_pred, b_prob, texts)
     for m in args.extra:
         print(f"\n=== 비교 모델: {m} ===")
-        e_pred, e_prob = predict(m, texts, args.max_len, None)
-        results.append(report(f"비교:{m}", y, e_pred))
-        diagnose(f"비교:{m}", y, e_pred, e_prob, texts)
+        e_pred, e_prob = _try_predict(m, texts, args.max_len, None)
+        if e_pred is not None:
+            results.append(report(f"비교:{m}", y, e_pred))
+            diagnose(f"비교:{m}", y, e_pred, e_prob, texts)
 
     ft = Path(args.finetuned)
     if ft.exists():
@@ -122,6 +168,9 @@ def main(argv=None):
     else:
         print(f"\n[안내] 파인튜닝 모델 없음({ft}) — train.py 먼저. baseline/비교만 출력.")
 
+    if not results:
+        print("\n[중단] 평가한 모델이 없습니다. --skip-baseline 과 함께 파인튜닝 모델 경로를 확인하세요.")
+        return
     print("\n" + "=" * 60)
     print(f"{'모델':<24}{'F1':>8}{'Recall':>8}{'FNR':>8}")
     for r in results:
