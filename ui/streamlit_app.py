@@ -5,7 +5,9 @@
 계약: contracts/api_contract.md (v0.3). 화면 명세는 그 문서의 '화면팀에게' 절.
 """
 
+import json
 import time
+from pathlib import Path
 
 import httpx
 import streamlit as st
@@ -13,6 +15,8 @@ import streamlit as st
 DEFAULT_API = "http://localhost:8000"
 POLL_SECONDS = 3
 TIMEOUT = 30.0
+# 화면에 띄우는 실측 수치의 단일 출처. 여기 없는 숫자는 화면에 만들지 않는다.
+METRICS_PATH = Path(__file__).resolve().parents[1] / "data" / "evidence" / "headline_metrics.json"
 
 st.set_page_config(page_title="뚫어보기 — 챗봇 보안 진단", page_icon="🛡️", layout="wide")
 
@@ -97,6 +101,79 @@ def render_target(t: dict):
         st.caption("ℹ️ " + t["model_notice"])
 
 
+@st.cache_data(show_spinner=False)
+def load_metrics() -> dict:
+    """실측 수치 로드. 파일이 없으면 빈 dict — 숫자를 지어내지 않는다."""
+    try:
+        return json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def render_ko_verification():
+    """진단 결과 아래에 붙는 'JOKER-KO 검증' 카드.
+
+    왜 별도 메뉴가 아니라 카드인가: 이 제품의 화면은 '진단'과 '탐지'다. 모델 성능표를 독립 메뉴로
+    올리면 연구 노트가 되고, 정작 사용자는 처방을 못 찾는다. 근거는 결과 옆에 붙어 있을 때 힘이 있다.
+    """
+    m = load_metrics()
+    if not m:
+        return
+    by = {x["key"]: x for x in m.get("metrics", [])}
+    with st.expander("🔬 JOKER-KO 검증 — 이 탐지기를 믿어도 되는 근거", expanded=False):
+        c1, c2 = st.columns(2)
+        for col, key in ((c1, "ood_recall"), (c2, "fpr")):
+            x = by.get(key)
+            if x:
+                col.metric(x["label"], x["value"], help=x["condition"])
+                col.caption(x["detail"])
+        st.caption("학습 데이터 **밖**의 공격에서도 검증된 수치입니다 — 암기가 아니라는 근거입니다.")
+        lim = m.get("limitations") or []
+        if lim:
+            st.warning("⚠️ " + lim[0])
+        st.caption(f"근거 문서: {by.get('ood_recall', {}).get('source', '-')} · 갱신 {m.get('updated', '-')}")
+
+
+def render_dashboard(base: str):
+    """홈 — 무엇을 하는 도구인지 + 지금 상태 + 실측 근거."""
+    st.subheader("무엇을 하는 도구인가")
+    st.markdown(
+        "- **1층 · JOKER-KO 탐지기** — 사용자 입력이 챗봇에 닿기 전에 한국어 프롬프트 인젝션인지 즉시 판정합니다(런타임).\n"
+        "- **2층 · 진단 엔진** — 시스템 지시문에 공격을 던져 약점을 찾고, 방어 문구를 처방하고, 다시 던져 개선을 숫자로 증명합니다(배포 전 감사).\n"
+        "- 두 층은 따로 돕니다. **2층의 진단 결과가 1층 배치를 처방하는** 관계입니다."
+    )
+
+    st.subheader("지금 상태")
+    try:
+        h = api_get(base, "/api/health")
+        c1, c2, c3 = st.columns(3)
+        c1.success("엔진 정상" if h.get("profile") != "mock" else "⚠️ mock (가짜 응답)")
+        c2.success("🔍 탐지기 준비됨" if h.get("detector_ready") else "🔍 탐지기 미준비")
+        c3.info(f"공격 시드 {h.get('corpus_loaded', '?')}개 · profile={h.get('profile')}")
+    except Exception as e:  # noqa: BLE001
+        st.error(f"엔진에 연결할 수 없습니다: {e}")
+
+    m = load_metrics()
+    if not m:
+        st.info("실측 수치 파일(data/evidence/headline_metrics.json)이 없어 근거 카드를 생략합니다.")
+        return
+
+    st.subheader("실측 근거")
+    st.caption("모든 수치는 측정 조건과 함께 읽어야 합니다. 카드에 마우스를 올리면 조건이 나옵니다.")
+    metrics = m.get("metrics", [])
+    for row_start in range(0, len(metrics), 3):
+        for col, x in zip(st.columns(3), metrics[row_start:row_start + 3]):
+            col.metric(x["label"], x["value"], help=x["condition"])
+            col.caption(x["detail"])
+            col.caption(f"↳ {x['source']}")
+
+    with st.expander("⚠️ 알려진 한계 (숫자와 함께 읽어야 하는 것)", expanded=False):
+        for line in m.get("limitations", []):
+            st.markdown(f"- {line}")
+
+    st.caption(f"갱신 {m.get('updated', '-')} · 수치를 바꾸려면 `data/evidence/headline_metrics.json` 하나만 고칩니다.")
+
+
 def render_done(run: dict):
     rep = run["report"]
     render_target(run["target"])
@@ -147,6 +224,8 @@ def render_done(run: dict):
     st.subheader("처방된 지시문")
     st.caption("이 지시문으로 교체하면 위 '처방 후' 수준으로 방어력이 올라갑니다. 우측 상단 아이콘으로 복사하세요.")
     st.code(rep.get("patched_prompt") or "", language="text")
+
+    render_ko_verification()
 
     # 시도 상세 — 같은 attack_id 를 처방 전/후로 묶어서
     with st.expander("시도별 상세 (처방 전 vs 후)"):
@@ -200,9 +279,12 @@ def render_history(base: str):
         if not runs:
             st.caption("아직 진단 이력이 없습니다.")
             return
-        rows = []
+        rows, mock_n = [], 0
         for r in runs[:30]:
+            is_mock = (r.get("backend") == "mock")
+            mock_n += int(is_mock)
             rows.append({
+                "환경": "⚠️ mock(가짜)" if is_mock else (r.get("backend") or "-"),
                 "run_id": r["run_id"],
                 "모델": r.get("target_model") or "-",   # 모델 다르면 등급 나란히 비교 금지 → 행마다 모델
                 "등급": r.get("grade") or "-",
@@ -210,6 +292,8 @@ def render_history(base: str):
                 "처방 후": f"{(r.get('asr_after') or 0)*100:.0f}%" if r.get("asr_after") is not None else "-",
                 "persona": r.get("persona") or "-",
             })
+        if mock_n:
+            st.warning(f"⚠️ mock(가짜 응답) 런이 {mock_n}건 섞여 있습니다 — 등급·ASR 을 인용하지 마세요.")
         st.dataframe(rows, use_container_width=True, hide_index=True)
         picked = st.text_input("run_id 로 결과 열기", value="")
         if picked.strip():
@@ -347,9 +431,13 @@ def render_diagnose(base, target, mode):
 # ── 메인 (탭: 탐지 / 정밀 진단) ──────────────────────────────
 def main():
     st.title("🛡️ 뚫어보기 — 한국어 챗봇 보안 자동 진단")
-    st.caption("입력을 **JOKER-KO 탐지기**가 1차로 거르고(층), 의심 지시문은 **엔진**이 진단→처방→재진단합니다 — 2단 방어.")
+    st.caption("**JOKER-KO 탐지기**가 입력을 실시간으로 걸러내고, **진단 엔진**이 시스템 지시문을 "
+               "진단→처방→재진단합니다. 두 층은 따로 돌고, 진단 결과가 탐지기 배치를 처방합니다.")
     base, target, mode = sidebar()
-    tab_detect, tab_diag = st.tabs(["🔍 탐지 (JOKER-KO · 1차 필터)", "🩺 정밀 진단 (엔진)"])
+    tab_home, tab_detect, tab_diag = st.tabs(
+        ["🏠 대시보드", "🔍 실시간 탐지 (JOKER-KO)", "🩺 정밀 진단 (엔진)"])
+    with tab_home:
+        render_dashboard(base)
     with tab_detect:
         render_detect(base)
     with tab_diag:

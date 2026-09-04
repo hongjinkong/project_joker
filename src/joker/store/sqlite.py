@@ -181,8 +181,10 @@ class Repository:
         try:
             rows = con.execute(
                 """SELECT run_id, created_at, grade, inconclusive, asr_before, asr_after, persona,
-                          model_victim AS target_model, fidelity, is_approximation
+                          model_victim AS target_model, fidelity, is_approximation, backend
                    FROM tb_diagnosis ORDER BY created_at DESC"""
+                # ★ backend 도 온다(0904). mock 런은 '가짜 응답으로 만든 100%→0%' 라서 이력 목록에서
+                #   제일 좋아 보인다 — 구분 없이 나열하면 발표 중에 그 행을 근거로 읽게 된다.
                 # ★ 목록에도 모델이 온다(계약 v0.2). 모델이 다르면 등급을 나란히 비교하면 안 되므로
                 #   이력 화면이 행마다 모델명을 찍어야 한다.
             ).fetchall()

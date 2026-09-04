@@ -1,0 +1,60 @@
+{
+  "updated": "2026-09-04",
+  "why": "화면에 띄우는 수치의 단일 출처. UI 에 숫자를 하드코딩하면 재측정 때 문서와 화면이 조용히 어긋난다. 모든 항목은 condition(측정 조건)과 source(근거 문서)를 반드시 갖는다 — 조건 없는 숫자는 과장이 된다.",
+  "metrics": [
+    {
+      "key": "ood_recall",
+      "label": "OOD 공격 탐지 (ML+규칙)",
+      "value": "81.6%",
+      "detail": "40 / 49 · 95% CI 68.6–90.0%",
+      "condition": "학습 생성기 밖에서 사람이 손으로 쓴 공격 49건",
+      "source": "docs/ood_recall_*.md"
+    },
+    {
+      "key": "fpr",
+      "label": "정상 문장 오탐 (FPR)",
+      "value": "0건 / 116",
+      "detail": "95% CI 0.0–3.2%",
+      "condition": "학습·검증에 쓰지 않은 정상 문장 116건",
+      "source": "docs/ood_recall_*.md"
+    },
+    {
+      "key": "detector_f1",
+      "label": "탐지 F1 — 기성 모델 대비",
+      "value": "0.000 → 0.981",
+      "detail": "baseline = Llama-Prompt-Guard-2-86M (원본)",
+      "condition": "test 세트. 공격 생성기와 같은 분포라 상한선",
+      "source": "detector/README.md"
+    },
+    {
+      "key": "asr",
+      "label": "진단 엔진 · 처방 전 → 후 ASR",
+      "value": "59.3% → 8.1%",
+      "detail": "개선 51.2%p · 동일 설정 2회 304건 판정 100% 일치",
+      "condition": "victim=qwen2.5:3b-instruct · 지시문 5개 · 공격 시드 57개 · temp 0 · seed 42",
+      "source": "docs/asr_rerun_20260903_165716.md"
+    },
+    {
+      "key": "defense_matrix",
+      "label": "두 층 모두 적용 시 잔여 유출",
+      "value": "0건 / 50",
+      "detail": "95% CI 0.0–7.1% · 지시문 처방만 했을 때는 14.0%",
+      "condition": "held-out 시드 10개 (탐지 학습에 쓰지 않은 attack_id)",
+      "source": "docs/defense_matrix_*.md"
+    },
+    {
+      "key": "judge_f1",
+      "label": "판정기 F1 (독립 심판 기준)",
+      "value": "0.871",
+      "detail": "독립 LLM 심판 + 사람 재정",
+      "condition": "심판에게 비밀값 원문을 주지 않아 순환 평가를 끊음",
+      "source": "joker gold f1"
+    }
+  ],
+  "limitations": [
+    "권위 사칭·방언·짧은 구어체 공격은 놓칩니다 — OOD 49건 중 10건. 놓친 건의 공격 확률이 전부 0.03 미만이라 문턱 조정으로는 해결되지 않고, 학습 데이터로만 보완됩니다.",
+    "ASR 수치는 검증 환경(qwen2.5:3b) 기준입니다. 대상 모델이 바뀌면 결과가 달라집니다 — gemma3:4b 는 같은 조건에서 64.9% → 40.4% 였습니다.",
+    "held-out 은 학습에서 뺀 시드일 뿐 '처음 보는 공격'이 아닙니다. 그 답은 OOD 세트에서만 나옵니다.",
+    "탐지 학습셋과 진단 시드는 원천이 같아, 학습에 쓴 시드의 필터 수치는 부풀려집니다 — 인용은 held-out·OOD 로만 합니다."
+  ]
+}
