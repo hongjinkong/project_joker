@@ -17,10 +17,13 @@ def create_app():
 
     from joker.api import presets, serialize, service
     from joker.api.jobs import JobRegistry
-    from joker.config import Settings
+    from joker.config import Settings, load_dotenv
     from joker.corpus.loader import load_default_corpus
     from joker.store.sqlite import Repository
 
+    # ★ uvicorn 은 cli.main() 을 안 거치므로 여기서 .env 를 읽는다.
+    #   안 하면 JOKER_PROFILE 이 기본값 mock 으로 떨어져 '가짜 응답으로 만든 진짜처럼 보이는 수치'가 나온다.
+    load_dotenv()
     settings = Settings.from_env()
     repo = Repository(settings.db_path)
     registry = JobRegistry()
